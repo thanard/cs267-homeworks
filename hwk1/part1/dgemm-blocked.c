@@ -15,7 +15,6 @@ LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKL
 #include <stdio.h>
 
 const char* dgemm_desc = "Simple blocked dgemm.";
-const double* c_small
 
 #if !defined(BLOCK_SIZE)
 #define BLOCK_SIZE_2 30
@@ -23,21 +22,6 @@ const double* c_small
 #endif
 
 #define min(a,b) (((a)<(b))?(a):(b))
-
-/* This auxiliary subroutine performs a smaller dgemm operation
- *  C := C + A * B
- * where C is M-by-N, A is M-by-K, and B is K-by-N. */
-static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
-{
-  /* For each row i of A */
-  for (int i = 0; i < BLOCK_SIZE; i += BLOCK_SIZE_2)
-    /* For each column j of B */ 
-    for (int j = 0; j < BLOCK_SIZE; j += BLOCK_SIZE_2) 
-    {
-      for (int k = 0; k < BLOCK_SIZE; k += BLOCK_SIZE_2)
-        do_block_2(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
-    }
-}
 
 static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, double* C)
 {  
@@ -56,6 +40,23 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
 
 }
 
+/* This auxiliary subroutine performs a smaller dgemm operation
+ *  C := C + A * B
+ * where C is M-by-N, A is M-by-K, and B is K-by-N. */
+static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
+{
+  /* For each row i of A */
+  for (int i = 0; i < BLOCK_SIZE; i += BLOCK_SIZE_2)
+    /* For each column j of B */ 
+    for (int j = 0; j < BLOCK_SIZE; j += BLOCK_SIZE_2) 
+    {
+      int M = min (BLOCK_SIZE_2, lda-i);
+      int N = min (BLOCK_SIZE_2, lda-j);
+      int K = min (BLOCK_SIZE_2, lda-k);
+      for (int k = 0; k < BLOCK_SIZE; k += BLOCK_SIZE_2)
+        do_block_2(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+    }
+}
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
