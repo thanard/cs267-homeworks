@@ -46,15 +46,17 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int i = 0; i < BLOCK_SIZE; i += BLOCK_SIZE_2)
+  for (int i = 0; i < M; i += BLOCK_SIZE_2)
     /* For each column j of B */ 
-    for (int j = 0; j < BLOCK_SIZE; j += BLOCK_SIZE_2) 
+    for (int j = 0; j < N; j += BLOCK_SIZE_2) 
     {
-      int M = min (BLOCK_SIZE_2, lda-i);
-      int N = min (BLOCK_SIZE_2, lda-j);
-      int K = min (BLOCK_SIZE_2, lda-k);
-      for (int k = 0; k < BLOCK_SIZE; k += BLOCK_SIZE_2)
-        do_block_2(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+      for (int k = 0; k < K; k += BLOCK_SIZE_2)
+      {
+        int M_2 = min (BLOCK_SIZE_2, M-i);
+        int N_2 = min (BLOCK_SIZE_2, N-j);
+        int K_2 = min (BLOCK_SIZE_2, K-k);
+        do_block_2(lda, M_2, N_2, K_2, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+      }
     }
 }
 
