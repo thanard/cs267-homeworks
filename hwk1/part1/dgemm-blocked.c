@@ -12,11 +12,14 @@ MKLROOT = /opt/intel/composer_xe_2013.1.117/mkl
 LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
 
 */
+#include <stdio.h>
 
 const char* dgemm_desc = "Simple blocked dgemm.";
+const double* c_small
 
 #if !defined(BLOCK_SIZE)
-#define BLOCK_SIZE 41
+#define BLOCK_SIZE_2 30
+#define BLOCK_SIZE 100
 #endif
 
 #define min(a,b) (((a)<(b))?(a):(b))
@@ -27,6 +30,18 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
+  for (int i = 0; i < BLOCK_SIZE; i += BLOCK_SIZE_2)
+    /* For each column j of B */ 
+    for (int j = 0; j < BLOCK_SIZE; j += BLOCK_SIZE_2) 
+    {
+      for (int k = 0; k < BLOCK_SIZE; k += BLOCK_SIZE_2)
+        do_block_2(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+    }
+}
+
+static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, double* C)
+{  
+  /* For each row i of A */
   for (int i = 0; i < M; ++i)
     /* For each column j of B */ 
     for (int j = 0; j < N; ++j) 
@@ -34,10 +49,13 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
       /* Compute C(i,j) */
       double cij = C[i+j*lda];
       for (int k = 0; k < K; ++k)
-	      cij += A[i+k*lda] * B[k+j*lda];
-      C[i+j*lda] = cij;
+      /* Compute C(i,j) */
+      cij += A[i+k*lda] * B[k+j*lda];
+      C[i+j*lda] = cij; 
     }
+
 }
+
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
