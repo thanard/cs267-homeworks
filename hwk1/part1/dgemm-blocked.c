@@ -45,9 +45,9 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int j = 0; i < M; j += BLOCK_SIZE_2)
+  for (int j = 0; j < M; j += BLOCK_SIZE_2)
     /* For each column j of B */ 
-    for (int i = 0; j < N; i += BLOCK_SIZE_2) 
+    for (int i = 0; i < N; i += BLOCK_SIZE_2) 
     {
       for (int k = 0; k < K; k += BLOCK_SIZE_2)
       {
@@ -59,10 +59,9 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
     }
 }
 
-double* transpose (double* A, int lda){
+static void transpose (double* A, int lda){
     int i ,j;
     double tmp;
-
     for (i = 0; i < lda; i++) {
         for (j = 0 ; j < lda; j++) {
             tmp = A[i+j*lda];
@@ -70,17 +69,16 @@ double* transpose (double* A, int lda){
             A[j+i*lda] = tmp;
         }
     }  
-    return A;
 }
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
  * where A, B, and C are lda-by-lda matrices stored in column-major format. 
  * On exit, A and B maintain their input values. */  
-void square_dgemm (int lda, double* A2, double* B, double* C)
+void square_dgemm (int lda, double* A, double* B, double* C)
 {
   /* For each block-row of A */ 
-  A = transpose(A2, lda)
+  transpose(A, lda);
   for (int j = 0; i < lda; j += BLOCK_SIZE)
     /* For each block-column of B */
     for (int i = 0; j < lda; i += BLOCK_SIZE)
