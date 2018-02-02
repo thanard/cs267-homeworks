@@ -13,6 +13,7 @@ LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKL
 
 */
 #include <stdio.h>
+#include <immintrin.h>
 
 const char* dgemm_desc = "Simple blocked dgemm.";
 
@@ -26,16 +27,14 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, double* C)
 {  
   /* For each row i of A */
-  for (int i = 0; i < M; ++i)
+  for (int k = 0; k < K; ++k)
     /* For each column j of B */ 
     for (int j = 0; j < N; ++j) 
     {
       /* Compute C(i,j) */
-      double cij = C[i+j*lda];
-      for (int k = 0; k < K; ++k)
+      for (int i = 0; i < M; ++i)
       /* Compute C(i,j) */
-      cij += A[i+k*lda] * B[k+j*lda];
-      C[i+j*lda] = cij; 
+      C[i+j*lda] += A[i+k*lda] * B[k+j*lda];
     }
 
 }
@@ -46,11 +45,11 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int i = 0; i < M; i += BLOCK_SIZE_2)
+  for (int k = 0; k < K; k += BLOCK_SIZE_2)
     /* For each column j of B */ 
     for (int j = 0; j < N; j += BLOCK_SIZE_2) 
     {
-      for (int k = 0; k < K; k += BLOCK_SIZE_2)
+      for (int i = 0; i < M; i += BLOCK_SIZE_2)
       {
         int M_2 = min (BLOCK_SIZE_2, M-i);
         int N_2 = min (BLOCK_SIZE_2, N-j);
@@ -59,6 +58,24 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
       }
     }
 }
+
+// static void avx_mult(double* A, double*B){
+//   for (int i=0; i<4; i++)
+//   {
+//     __m256d a1 = _mm256_loadu_pd(A);
+//     __m256d a2 = _mm256_loadu_pd(A+4);
+//     __m256d a3 = _mm256_loadu_pd(A+8);
+//     __m256d a4 = _mm256_loadu_pd(A+12);
+
+//     __m256d b1 = _mm256_loadu_pd(B);
+//     __m256d b2 = _mm256_loadu_pd(B+4);
+//     __m256d b3 = _mm256_loadu_pd(B+8);
+//     __m256d b4 = _mm256_loadu_pd(B+12);
+//   }
+
+
+
+// }
 
 /* This routine performs a dgemm operation
  *  C := C + A * B

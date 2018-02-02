@@ -13,7 +13,7 @@
 
 CC = cc 
 OPT = -O2
-CFLAGS = -Wall -std=gnu99 $(OPT)
+CFLAGS = -Wall -std=gnu99 $(OPT) -mavx
 LDFLAGS = -Wall
 # librt is needed for clock_gettime
 LDLIBS = -lrt -lblas
