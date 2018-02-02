@@ -13,7 +13,7 @@
 
 // On Cori
 // 2.3 GHz * 8 vector width * 2 flops for FMA = 36.8 GF/s
-#define MAX_SPEED 36.8
+  #define MAX_SPEED 36.8
 
 /* reference_dgemm wraps a call to the BLAS-3 routine DGEMM, via the standard FORTRAN interface - hence the reference semantics. */ 
 #define DGEMM dgemm_

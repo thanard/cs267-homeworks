@@ -9,7 +9,8 @@ CC = cc
 OPT = -O3
 CFLAGS = -Wall -std=gnu99 $(OPT)
 MKLROOT = /opt/intel/composer_xe_2013.1.117/mkl
-LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
+LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)
+/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
 
 */
 #include <stdio.h>
@@ -27,17 +28,16 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, double* C)
 {  
   /* For each row i of A */
-  for (int k = 0; k < K; ++k)
+  for (int j = 0; j < N; ++j)
     /* For each column j of B */ 
-    for (int j = 0; j < N; ++j) 
+    for (int i = 0; i < M; ++i) 
     {
       /* Compute C(i,j) */
-      // double cij = C[i+j*lda];
-      for (int i = 0; i < M; ++i)
+      double cij = C[i+j*lda];
+      for (int k = 0; k < K; ++k)
         /* Compute C(i,j) */
-        C[i+j*lda] += A[i+k*lda] * B[k+j*lda];
-        // cij += A[i+k*lda] * B[k+j*lda];
-      // C[i+j*lda] = cij;
+        cij += A[k+i*lda] * B[k+j*lda];
+      C[i+j*lda] = cij; 
     }
 
 }
@@ -48,16 +48,16 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int k = 0; k < K; k += BLOCK_SIZE_2)
+  for (int j = 0; j < M; j += BLOCK_SIZE_2)
     /* For each column j of B */ 
-    for (int j = 0; j < N; j += BLOCK_SIZE_2) 
+    for (int i = 0; i < N; i += BLOCK_SIZE_2) 
     {
-      for (int i = 0; i < M; i += BLOCK_SIZE_2)
+      for (int k = 0; k < K; k += BLOCK_SIZE_2)
       {
         int M_2 = min (BLOCK_SIZE_2, M-i);
         int N_2 = min (BLOCK_SIZE_2, N-j);
         int K_2 = min (BLOCK_SIZE_2, K-k);
-        do_block_2(lda, M_2, N_2, K_2, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+        do_block_2(lda, M_2, N_2, K_2, A + k + i*lda, B + k + j*lda, C + i + j*lda);
       }
     }
 }
@@ -94,6 +94,7 @@ static void avx_mult(double* A, double* B, double* C){
   tmp = _mm256_fmadd_pd(a3, _mm256_broadcast_sd(B+14), tmp);
   tmp = _mm256_fmadd_pd(a4, _mm256_broadcast_sd(B+15), tmp);
   _mm256_store_pd(C+12, tmp);  
+
 }
 
 /* This routine performs a dgemm operation
