@@ -19,7 +19,7 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 
 #if !defined(BLOCK_SIZE)
 #define BLOCK_SIZE_2 30
-#define BLOCK_SIZE 100
+#define BLOCK_SIZE 94
 #endif
 
 #define min(a,b) (((a)<(b))?(a):(b))
@@ -32,9 +32,12 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
     for (int j = 0; j < N; ++j) 
     {
       /* Compute C(i,j) */
+      // double cij = C[i+j*lda];
       for (int i = 0; i < M; ++i)
-      /* Compute C(i,j) */
-      C[i+j*lda] += A[i+k*lda] * B[k+j*lda];
+        /* Compute C(i,j) */
+        C[i+j*lda] += A[i+k*lda] * B[k+j*lda];
+        // cij += A[i+k*lda] * B[k+j*lda];
+      // C[i+j*lda] = cij;
     }
 
 }
@@ -59,23 +62,39 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
     }
 }
 
-// static void avx_mult(double* A, double*B){
-//   for (int i=0; i<4; i++)
-//   {
-//     __m256d a1 = _mm256_loadu_pd(A);
-//     __m256d a2 = _mm256_loadu_pd(A+4);
-//     __m256d a3 = _mm256_loadu_pd(A+8);
-//     __m256d a4 = _mm256_loadu_pd(A+12);
+static void avx_mult(double* A, double* B, double* C){
+  __m256d a1 = _mm256_loadu_pd(A);
+  __m256d a2 = _mm256_loadu_pd(A+4);
+  __m256d a3 = _mm256_loadu_pd(A+8);
+  __m256d a4 = _mm256_loadu_pd(A+12);
 
-//     __m256d b1 = _mm256_loadu_pd(B);
-//     __m256d b2 = _mm256_loadu_pd(B+4);
-//     __m256d b3 = _mm256_loadu_pd(B+8);
-//     __m256d b4 = _mm256_loadu_pd(B+12);
-//   }
+  __m256d tmp = _mm256_mul_pd(a1, _mm256_broadcast_sd(B));
+  tmp = _mm256_fmadd_pd(a2, _mm256_broadcast_sd(B+1), tmp);
+  tmp = _mm256_fmadd_pd(a3, _mm256_broadcast_sd(B+2), tmp);
+  tmp = _mm256_fmadd_pd(a4, _mm256_broadcast_sd(B+3), tmp);
+  _mm256_store_pd(C, tmp);
 
+  // C+4
+  tmp = _mm256_mul_pd(a1, _mm256_broadcast_sd(B+4));
+  tmp = _mm256_fmadd_pd(a2, _mm256_broadcast_sd(B+5), tmp);
+  tmp = _mm256_fmadd_pd(a3, _mm256_broadcast_sd(B+6), tmp);
+  tmp = _mm256_fmadd_pd(a4, _mm256_broadcast_sd(B+7), tmp);
+  _mm256_store_pd(C+4, tmp);    
 
+  // C+8
+  tmp = _mm256_mul_pd(a1, _mm256_broadcast_sd(B+8));
+  tmp = _mm256_fmadd_pd(a2, _mm256_broadcast_sd(B+9), tmp);
+  tmp = _mm256_fmadd_pd(a3, _mm256_broadcast_sd(B+10), tmp);
+  tmp = _mm256_fmadd_pd(a4, _mm256_broadcast_sd(B+11), tmp);
+  _mm256_store_pd(C+8, tmp); 
 
-// }
+  // C+4
+  tmp = _mm256_mul_pd(a1, _mm256_broadcast_sd(B+12));
+  tmp = _mm256_fmadd_pd(a2, _mm256_broadcast_sd(B+13), tmp);
+  tmp = _mm256_fmadd_pd(a3, _mm256_broadcast_sd(B+14), tmp);
+  tmp = _mm256_fmadd_pd(a4, _mm256_broadcast_sd(B+15), tmp);
+  _mm256_store_pd(C+12, tmp);  
+}
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
@@ -83,19 +102,20 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
  * On exit, A and B maintain their input values. */  
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
-  /* For each block-row of A */ 
-  for (int i = 0; i < lda; i += BLOCK_SIZE)
-    /* For each block-column of B */
-    for (int j = 0; j < lda; j += BLOCK_SIZE)
-      /* Accumulate block dgemms into block of C */
-      for (int k = 0; k < lda; k += BLOCK_SIZE)
-      {
-	/* Correct block dimensions if block "goes off edge of" the matrix */
-	int M = min (BLOCK_SIZE, lda-i);
-	int N = min (BLOCK_SIZE, lda-j);
-	int K = min (BLOCK_SIZE, lda-k);
+    avx_mult(A, B, C);
+ //  /* For each block-row of A */ 
+ //  for (int i = 0; i < lda; i += BLOCK_SIZE)
+ //    /* For each block-column of B */
+ //    for (int j = 0; j < lda; j += BLOCK_SIZE)
+ //      /* Accumulate block dgemms into block of C */
+ //      for (int k = 0; k < lda; k += BLOCK_SIZE)
+ //      {
+	//  Correct block dimensions if block "goes off edge of" the matrix 
+	// int M = min (BLOCK_SIZE, lda-i);
+	// int N = min (BLOCK_SIZE, lda-j);
+	// int K = min (BLOCK_SIZE, lda-k);
 
-	/* Perform individual block dgemm */
-	do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
-      }
+	// /* Perform individual block dgemm */
+	// do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
+ //      }
 }
