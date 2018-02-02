@@ -14,6 +14,7 @@ LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKL
 
 */
 #include <stdio.h>
+#include <stdlib.h>
 
 const char* dgemm_desc = "Simple blocked dgemm.";
 
@@ -22,20 +23,34 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
+void print_mat(double* A, int M, int N){
+    for (int i =0; i<M; i++){
+    for(int j=0; j<N; j++){
+      printf("%lf\t", A[i + N*j]);
+    }
+    printf("\n");
+  }
+}
+
 static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, double* C)
 {  
+  // printf("M %d, N %d, K %d \n", M, N, K);
+  // print_mat(A, M, K);
+  // print_mat(B, N, K);
+  // print_mat(C, M, N);
   /* For each row i of A */
   for (int j = 0; j < N; ++j)
     /* For each column j of B */ 
     for (int i = 0; i < M; ++i) 
     {
       /* Compute C(i,j) */
-      double cij = C[i+j*lda];
+      double cij = 0;
       for (int k = 0; k < K; ++k)
         /* Compute C(i,j) */
         cij += A[k+i*lda] * B[k+j*lda];
       C[i+j*lda] = cij; 
     }
+  print_mat(C, M, N);
 
 }
 
@@ -45,9 +60,9 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int j = 0; j < M; j += BLOCK_SIZE_2)
+  for (int j = 0; j < N; j += BLOCK_SIZE_2)
     /* For each column j of B */ 
-    for (int i = 0; i < N; i += BLOCK_SIZE_2) 
+    for (int i = 0; i < M; i += BLOCK_SIZE_2) 
     {
       for (int k = 0; k < K; k += BLOCK_SIZE_2)
       {
@@ -59,17 +74,34 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
     }
 }
 
-static void transpose (double* A, int lda){
-    int i ,j;
-    double tmp;
-    for (j = 0; j < lda; j++) {
-        for (i = 0 ; i < lda; i++) {
-            tmp = A[i+j*lda];
-            A[i+j*lda] = A[j+i*lda];
-            A[j+i*lda] = tmp;
-        }
-    }  
+void transpose (double* A, int lda){
+  int i ,j;
+  double tmp;
+  for (i = 0; i < lda; i++) {
+      for (j = 0 ; j < i; j++) {
+          tmp = A[i+j*lda];
+          A[i+j*lda] = A[j+i*lda];
+          A[j+i*lda] = tmp;
+      }
+  }    
 }
+double* naive_mult (int n, double* A, double* B)
+{
+  double* C = (int *)malloc(n*n*sizeof(double));
+  /* For each row i of A */
+  for (int i = 0; i < n; ++i)
+    /* For each column j of B */
+    for (int j = 0; j < n; ++j) 
+    {
+      /* Compute C(i,j) */
+      double cij = 0;
+      for( int k = 0; k < n; k++ )
+        cij += A[i+k*n] * B[k+j*n];
+      C[i+j*n] = cij;
+    }
+  print_mat(C, n, n);
+}
+
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
@@ -77,20 +109,11 @@ static void transpose (double* A, int lda){
  * On exit, A and B maintain their input values. */  
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
-  for (int j = 0; j < lda; j++)
-    /* For each block-column of B */
-    for (int i = 0; i < lda; i++)
-        printf("%lf", A[i+j*lda]);
-    printf("/n");
-    
+  print_mat(A, lda, lda);
+  print_mat(B, lda, lda);
+  // print_mat(C, lda, lda);
+  naive_mult(lda, A, B);
   transpose(A, lda);
-    
-  for (int j = 0; j < lda; j++)
-    /* For each block-column of B */
-    for (int i = 0; i < lda; i++)
-        printf("%lf", A[i+j*lda]);
-    printf("/n");
-    
   /* For each block-row of A */ 
   for (int j = 0; j < lda; j += BLOCK_SIZE)
     /* For each block-column of B */
@@ -106,4 +129,6 @@ void square_dgemm (int lda, double* A, double* B, double* C)
       	/* Perform individual block dgemm */
       	do_block(lda, M, N, K, A + k + i*lda, B + k + j*lda, C + i + j*lda);
       }
+
+  // exit(0);
 }
