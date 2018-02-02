@@ -12,7 +12,7 @@
 # other BLAS implementations, check the NERSC documentation.
 
 CC = cc 
-OPT = -O2
+OPT = -O2 -march=native
 CFLAGS = -Wall -std=gnu99 $(OPT) -mavx
 LDFLAGS = -Wall
 # librt is needed for clock_gettime
