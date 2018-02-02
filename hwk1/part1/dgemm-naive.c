@@ -12,8 +12,20 @@ MKLROOT = /opt/intel/composer_xe_2013.1.117/mkl
 LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
 
 */
+#include <stdio.h>
+#include <stdlib.h>
 
 const char* dgemm_desc = "Naive, three-loop dgemm.";
+
+static void print_matrix(double* A, int M, int N, int lda){
+  for(int i=0; i<M; ++i){
+    for(int j=0; j<N; ++j){
+      printf("%.3lf\t", *(A+i+j*lda));
+    }
+    printf("\n");
+  }
+  printf("\n");
+}
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
@@ -21,6 +33,9 @@ const char* dgemm_desc = "Naive, three-loop dgemm.";
  * On exit, A and B maintain their input values. */    
 void square_dgemm (int n, double* A, double* B, double* C)
 {
+  print_matrix(A, n, n, n);
+  print_matrix(B, n, n, n);
+
   /* For each row i of A */
   for (int i = 0; i < n; ++i)
     /* For each column j of B */
@@ -32,4 +47,6 @@ void square_dgemm (int n, double* A, double* B, double* C)
 	cij += A[i+k*n] * B[k+j*n];
       C[i+j*n] = cij;
     }
+  print_matrix(C, n, n, n);
+  exit(0);
 }

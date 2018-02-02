@@ -19,7 +19,7 @@ LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKL
 const char* dgemm_desc = "Simple blocked dgemm.";
 
 #if !defined(BLOCK_SIZE)
-#define BLOCK_SIZE_2 30
+#define BLOCK_SIZE_2 32
 #define BLOCK_SIZE 94
 #endif
 
@@ -72,20 +72,40 @@ static void avx_mult(double* A, double* B, double* C){
 
 static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, double* C)
 {  
+  double tempA[16], tempB[16], tempC[16];
   /* For each row i of A */
-  for (int j = 0; j < N; j += 4)
+  for (int i = 0; i < M; i+=4)
     /* For each column j of B */ 
-    for (int i = 0; i < M; i += 4) 
+    for (int j = 0; j < N; j += 4) 
     {
-      // /* Compute C(i,j) */
-      // double cij = C[i+j*lda];
-      for (int k = 0; k < K; k+=4){
-        printf("i = %d, j = %d, k = %d, A = %.3lf, B = %.3lf, C = %.3lf \n", i, j, k, *(A+i+k*lda), *(B+k+j*lda), *(C+i+j*lda));
-        avx_mult(A + i + k*lda, B + k + j*lda, C + i + j*lda);
-      //   /* Compute C(i,j) */
-      //   cij += A[i+k*lda] * B[k+j*lda];
-      // C[i+j*lda] = cij; 
+      // Copy C matrix
+      for (int y = 0; y<4; ++y){
+        for (int x = 0; x<4; ++x){
+          *(tempC + x + 4*y) = *(C+(i+x)+(j+y)*lda);
+
+        }
       }
+      /* Compute C(i,j) */
+      for (int k = 0; k < K; k += 4)
+      {
+        // Copy A Bmatrices
+        for (int y = 0; y<4; ++y){
+          for (int x = 0; x<4; ++x){
+            *(tempA + x + 4*y) = *(A+(i+x)+(k+y)*lda);
+            *(tempB + x + 4*y) = *(B+(k+x)+(j+y)*lda);
+          }
+        }
+        // printf("i = %d, j = %d, k = %d, A = %.3lf, B = %.3lf, C = %.3lf \n", i, j, k, *(tempA+i+k*lda), *(tempB+k+j*lda), *(tempC+i+j*lda));
+        avx_mult(tempA, tempB, tempC);
+      }
+      // Write back to C matrix
+      for (int y = 0; y<4; ++y){
+        for (int x = 0; x<4; ++x){
+          *(C+(i+x)+(j+y)*lda) = *(tempC + x + 4*y);
+
+        }
+      }
+      
     }
 
 }
@@ -116,8 +136,8 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
  * On exit, A and B maintain their input values. */  
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
-  print_matrix(A, lda, lda, lda);
-  print_matrix(B, lda, lda, lda);
+  // print_matrix(A, lda, lda, lda);
+  // print_matrix(B, lda, lda, lda);
     // avx_mult(A, B, C);
   /* For each block-row of A */ 
   for (int i = 0; i < lda; i += BLOCK_SIZE)
@@ -134,6 +154,6 @@ void square_dgemm (int lda, double* A, double* B, double* C)
 	/* Perform individual block dgemm */
 	do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
       }
-  print_matrix(C, lda, lda, lda);
-  exit(0);
+//   print_matrix(C, lda, lda, lda);
+//   exit(0);
 }
