@@ -14,6 +14,7 @@ LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKL
 
 */
 #include <stdio.h>
+#include <string.h>
 #include <immintrin.h>
 
 const char* dgemm_desc = "Simple blocked dgemm.";
@@ -70,42 +71,73 @@ static void avx_mult(double* A, double* B, double* C){
 
 }
 
+static void writeto4by4(double* small, double* big, int i, int j, int lda){
+  // Write to small from big.
+  *(small) = *(big+i+j*lda);
+  *(small+1) = *(big+i+1+j*lda);
+  *(small+2) = *(big+i+2+j*lda);
+  *(small+3) = *(big+i+3+j*lda);
+
+  *(small+4) = *(big+i+j*lda+lda);
+  *(small+5) = *(big+i+1+j*lda+lda);
+  *(small+6) = *(big+i+2+j*lda+lda);
+  *(small+7) = *(big+i+3+j*lda+lda);
+  
+  *(small+8) = *(big+i+j*lda + 2*lda);
+  *(small+9) = *(big+i+1+j*lda + 2*lda);
+  *(small+10) = *(big+i+2+j*lda + 2*lda);
+  *(small+11) = *(big+i+3+j*lda + 2*lda);
+
+  *(small+12) = *(big+i+j*lda + 3*lda);
+  *(small+13) = *(big+i+1+j*lda + 3*lda);
+  *(small+14) = *(big+i+2+j*lda + 3*lda);
+  *(small+15) = *(big+i+3+j*lda + 3*lda);
+}
+
+static void addfrom4by4(double* small, double* big, int i, int j, int lda){
+  // Write to big from small.
+  *(big+i+j*lda) += *(small);
+  *(big+i+1+j*lda) += *(small+1);
+   *(big+i+2+j*lda) += *(small+2);
+   *(big+i+3+j*lda) += *(small+3);
+
+   *(big+i+j*lda+lda) += *(small+4);
+   *(big+i+1+j*lda+lda) += *(small+5);
+   *(big+i+2+j*lda+lda) += *(small+6);
+   *(big+i+3+j*lda+lda) += *(small+7);
+  
+   *(big+i+j*lda + 2*lda) += *(small+8);
+   *(big+i+1+j*lda + 2*lda) += *(small+9);
+   *(big+i+2+j*lda + 2*lda) += *(small+10);
+   *(big+i+3+j*lda + 2*lda) += *(small+11);
+
+   *(big+i+j*lda + 3*lda) += *(small+12);
+   *(big+i+1+j*lda + 3*lda) += *(small+13);
+   *(big+i+2+j*lda + 3*lda) += *(small+14);
+   *(big+i+3+j*lda + 3*lda) += *(small+15);
+}
+
 static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, double* C)
 {  
   double tempA[16], tempB[16], tempC[16];
   /* For each row i of A */
-  for (int i = 0; i < M; i+=4)
+  for (int j = 0; j < N; j += 4)
     /* For each column j of B */ 
-    for (int j = 0; j < N; j += 4) 
+    for (int i = 0; i < M; i+=4)
     {
-      // Copy C matrix
-      for (int y = 0; y<4; ++y){
-        for (int x = 0; x<4; ++x){
-          *(tempC + x + 4*y) = *(C+(i+x)+(j+y)*lda);
-
-        }
-      }
+      // Reset tempC to zero.
+      memset(tempC, 0, sizeof(tempC));
+      // print_matrix(tempC, 4, 4, 1);
       /* Compute C(i,j) */
       for (int k = 0; k < K; k += 4)
       {
-        // Copy A Bmatrices
-        for (int y = 0; y<4; ++y){
-          for (int x = 0; x<4; ++x){
-            *(tempA + x + 4*y) = *(A+(i+x)+(k+y)*lda);
-            *(tempB + x + 4*y) = *(B+(k+x)+(j+y)*lda);
-          }
-        }
+        writeto4by4(tempA, A, i, k, lda);
+        writeto4by4(tempB, B, k, j, lda);
         // printf("i = %d, j = %d, k = %d, A = %.3lf, B = %.3lf, C = %.3lf \n", i, j, k, *(tempA+i+k*lda), *(tempB+k+j*lda), *(tempC+i+j*lda));
         avx_mult(tempA, tempB, tempC);
       }
-      // Write back to C matrix
-      for (int y = 0; y<4; ++y){
-        for (int x = 0; x<4; ++x){
-          *(C+(i+x)+(j+y)*lda) = *(tempC + x + 4*y);
-
-        }
-      }
-      
+      // Add back to C matrix
+      addfrom4by4(tempC, C, i, j, lda);
     }
 
 }
@@ -155,5 +187,5 @@ void square_dgemm (int lda, double* A, double* B, double* C)
 	do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
       }
 //   print_matrix(C, lda, lda, lda);
-//   exit(0);
+  // exit(0);
 }
