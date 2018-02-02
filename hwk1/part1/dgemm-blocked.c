@@ -28,7 +28,7 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 static void print_matrix(double* A, int M, int N, int lda){
   for(int i=0; i<M; ++i){
     for(int j=0; j<N; ++j){
-      printf("%lf\t", *(A+i+j*lda));
+      printf("%.3lf\t", *(A+i+j*lda));
     }
     printf("\n");
   }
@@ -79,11 +79,13 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
     {
       // /* Compute C(i,j) */
       // double cij = C[i+j*lda];
-      for (int k = 0; k < K; k+=4)
+      for (int k = 0; k < K; k+=4){
+        printf("i = %d, j = %d, k = %d, A = %.3lf, B = %.3lf, C = %.3lf \n", i, j, k, *(A+i+k*lda), *(B+k+j*lda), *(C+i+j*lda));
         avx_mult(A + i + k*lda, B + k + j*lda, C + i + j*lda);
       //   /* Compute C(i,j) */
       //   cij += A[i+k*lda] * B[k+j*lda];
       // C[i+j*lda] = cij; 
+      }
     }
 
 }
@@ -114,8 +116,8 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
  * On exit, A and B maintain their input values. */  
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
-  // print_matrix(A, lda, lda, lda);
-  // print_matrix(B, lda, lda, lda);
+  print_matrix(A, lda, lda, lda);
+  print_matrix(B, lda, lda, lda);
     // avx_mult(A, B, C);
   /* For each block-row of A */ 
   for (int i = 0; i < lda; i += BLOCK_SIZE)
@@ -132,6 +134,6 @@ void square_dgemm (int lda, double* A, double* B, double* C)
 	/* Perform individual block dgemm */
 	do_block(lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
       }
-  // print_matrix(C, lda, lda, lda);
-  // exit(0);
+  print_matrix(C, lda, lda, lda);
+  exit(0);
 }
