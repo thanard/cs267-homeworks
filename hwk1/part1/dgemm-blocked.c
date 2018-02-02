@@ -17,7 +17,7 @@ LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKL
 
 const char* dgemm_desc = "Simple blocked dgemm.";
 
-#define BLOCK_SIZE_2 30
+#define BLOCK_SIZE_2 32
 #define BLOCK_SIZE 100
 
 #define min(a,b) (((a)<(b))?(a):(b))
@@ -77,19 +77,7 @@ static void transpose (double* A, int lda){
  * On exit, A and B maintain their input values. */  
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
-  for (int j = 0; j < lda; j++)
-    /* For each block-column of B */
-    for (int i = 0; i < lda; i++)
-        printf("%lf", A[i+j*lda]);
-    printf("/n");
-    
   transpose(A, lda);
-    
-  for (int j = 0; j < lda; j++)
-    /* For each block-column of B */
-    for (int i = 0; i < lda; i++)
-        printf("%lf", A[i+j*lda]);
-    printf("/n");
     
   /* For each block-row of A */ 
   for (int j = 0; j < lda; j += BLOCK_SIZE)
