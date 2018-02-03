@@ -21,7 +21,7 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 
 #if !defined(BLOCK_SIZE)
 #define BLOCK_SIZE_2 32
-#define BLOCK_SIZE 94
+#define BLOCK_SIZE 128
 #endif
 
 #define min(a,b) (((a)<(b))?(a):(b))
@@ -148,9 +148,9 @@ static void do_block_2 (int lda, int M, int N, int K, double* A, double* B, doub
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int i = 0; i < M; i += BLOCK_SIZE_2)
+  for (int j = 0; j < N; j += BLOCK_SIZE_2)
     /* For each column j of B */ 
-    for (int j = 0; j < N; j += BLOCK_SIZE_2) 
+    for (int i = 0; i < M; i += BLOCK_SIZE_2)
     {
       for (int k = 0; k < K; k += BLOCK_SIZE_2)
       {
@@ -172,9 +172,9 @@ void square_dgemm (int lda, double* A, double* B, double* C)
   // print_matrix(B, lda, lda, lda);
     // avx_mult(A, B, C);
   /* For each block-row of A */ 
-  for (int i = 0; i < lda; i += BLOCK_SIZE)
+  for (int j = 0; j < lda; j += BLOCK_SIZE)
     /* For each block-column of B */
-    for (int j = 0; j < lda; j += BLOCK_SIZE)
+    for (int i = 0; i < lda; i += BLOCK_SIZE)
       /* Accumulate block dgemms into block of C */
       for (int k = 0; k < lda; k += BLOCK_SIZE)
       {
