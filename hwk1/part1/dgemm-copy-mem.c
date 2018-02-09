@@ -71,45 +71,58 @@ static void avx_mult(double* A, double* B, double* restrict C, int lda, int ldb)
 
 }
 
-static void addfrom4by4(double* small, double* big, int i, int j, int lda){
+static void addfrom4by4(double* temp, double* restrict dest, int lda){
   // Write to big from small.
-  *(big+i+j*lda) += *(small);
-  *(big+i+1+j*lda) += *(small+1);
-   *(big+i+2+j*lda) += *(small+2);
-   *(big+i+3+j*lda) += *(small+3);
+  for (int x = 0; x<4; ++x){
+    // _mm256_store_pd(dest + lda*x, 
+    //   _mm256_add_pd(_mm256_loadu_pd(dest + lda*x),
+    //     _mm256_loadu_pd(temp +4*x)
+    //       )
+    //   );
+    dest[lda*x] += temp[4*x];
+    dest[1 + lda*x] += temp[1 + 4*x];
+    dest[2 + lda*x] += temp[2 + 4*x];
+    dest[3 + lda*x] += temp[3 + 4*x];
+  } 
+  // *(big+i+j*lda) += *(small);
+  // *(big+i+1+j*lda) += *(small+1);
+  //  *(big+i+2+j*lda) += *(small+2);
+  //  *(big+i+3+j*lda) += *(small+3);
 
-   *(big+i+j*lda+lda) += *(small+4);
-   *(big+i+1+j*lda+lda) += *(small+5);
-   *(big+i+2+j*lda+lda) += *(small+6);
-   *(big+i+3+j*lda+lda) += *(small+7);
+  //  *(big+i+j*lda+lda) += *(small+4);
+  //  *(big+i+1+j*lda+lda) += *(small+5);
+  //  *(big+i+2+j*lda+lda) += *(small+6);
+  //  *(big+i+3+j*lda+lda) += *(small+7);
   
-   *(big+i+j*lda + 2*lda) += *(small+8);
-   *(big+i+1+j*lda + 2*lda) += *(small+9);
-   *(big+i+2+j*lda + 2*lda) += *(small+10);
-   *(big+i+3+j*lda + 2*lda) += *(small+11);
+  //  *(big+i+j*lda + 2*lda) += *(small+8);
+  //  *(big+i+1+j*lda + 2*lda) += *(small+9);
+  //  *(big+i+2+j*lda + 2*lda) += *(small+10);
+  //  *(big+i+3+j*lda + 2*lda) += *(small+11);
 
-   *(big+i+j*lda + 3*lda) += *(small+12);
-   *(big+i+1+j*lda + 3*lda) += *(small+13);
-   *(big+i+2+j*lda + 3*lda) += *(small+14);
-   *(big+i+3+j*lda + 3*lda) += *(small+15);
+  //  *(big+i+j*lda + 3*lda) += *(small+12);
+  //  *(big+i+1+j*lda + 3*lda) += *(small+13);
+  //  *(big+i+2+j*lda + 3*lda) += *(small+14);
+  //  *(big+i+3+j*lda + 3*lda) += *(small+15);
 }
 
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
-double static tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(32)));  
 
 static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A, double* B, double* restrict C)
 {
+  double static tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(64)));  
+
   // double blk_B[16*BLOCK_SIZE*BLOCK_SIZE];
   // double blk_C[BLOCK_SIZE*BLOCK_SIZE];
-  int num_blk = BLOCK_SIZE/4;
   for(int k = 0; k<K; k += 4){
     for (int i =0; i<M; i += 4){
       for (int y = 0; y<4; ++y){
-        for (int x = 0; x<4; ++x){
-          tempA[k*4 + i*BLOCK_SIZE + x + 4*y] = A[(i+x) + (k+y)*lda];
-        }
+        _mm256_store_pd(tempA + k*4 + i*BLOCK_SIZE + 4*y, _mm256_loadu_pd(A + i + (k+y)*lda));
+          // tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
+          // tempA[k*4 + i*BLOCK_SIZE + 1 + 4*y] = A[(i+1) + (k+y)*lda];
+          // tempA[k*4 + i*BLOCK_SIZE + 2 + 4*y] = A[(i+2) + (k+y)*lda];
+          // tempA[k*4 + i*BLOCK_SIZE + 3 + 4*y] = A[(i+3) + (k+y)*lda];
       }
     }
   }
@@ -137,7 +150,7 @@ static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A,
         avx_mult(tempA + 4*k + i*BLOCK_SIZE, B+k+j*ldb, tempC, 4, ldb);
       }
       // Add back to C matrix
-      addfrom4by4(tempC, C, i, j, ldc);
+      addfrom4by4(tempC, C + i + lda*j, ldc);
     }
 }
 

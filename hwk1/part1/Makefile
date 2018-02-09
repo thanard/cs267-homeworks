@@ -12,11 +12,11 @@
 # other BLAS implementations, check the NERSC documentation.
 
 CC = cc 
-OPT = -O2 -march=native
+OPT = -O2 -funroll-loops -xCORE-AVX2 -malign-double -march=native
 CFLAGS = -Wall -std=gnu99 $(OPT) -mavx
 LDFLAGS = -Wall
 # librt is needed for clock_gettime
-LDLIBS = -lrt -lblas
+LDLIBS = -lrt
 
 targets = benchmark-naive benchmark-blocked benchmark-copy-mem benchmark-blas
 objects = benchmark.o dgemm-naive.o dgemm-blocked.o dgemm-copy-mem.o dgemm-blas.o  
