@@ -96,11 +96,11 @@ static void addfrom4by4(double* small, double* big, int i, int j, int lda){
 
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
- * where C is M-by-N, A is M-by-K, and B is K-by-N. */
-double static tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(32)));  
+ * where C is M-by-N, A is M-by-K, and B is K-by-N. */ 
 
 static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A, double* B, double* restrict C)
 {
+  double static tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(32))); 
   // double blk_B[16*BLOCK_SIZE*BLOCK_SIZE];
   // double blk_C[BLOCK_SIZE*BLOCK_SIZE];
   int num_blk = BLOCK_SIZE/4;
