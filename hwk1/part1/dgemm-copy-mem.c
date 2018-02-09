@@ -122,31 +122,46 @@ static void addfrom4by4(double* temp, double* restrict dest, int lda, int leftov
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
+double static tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(64)));  
 
 static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A, double* B, double* restrict C)
 {
-  double static tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(64))) = {0};  
-
+  // memset(tempA, 0, sizeof(tempA));
+  // printf("tempA:zero\n");
+  // print_matrix(tempA, BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
   // double blk_B[16*BLOCK_SIZE*BLOCK_SIZE];
   // double blk_C[BLOCK_SIZE*BLOCK_SIZE];
   for(int k = 0; k<K; k += 4){
     for (int i =0; i<M; i += 4){
       int leftover_collumn = min(4, M-i);
       int leftover_row = min(4, K-k);
-      for (int y = 0; y < leftover_row; ++y){
-        if (leftover_collumn==4){
-            _mm256_store_pd(tempA + k*4 + i*BLOCK_SIZE + 4*y, _mm256_loadu_pd(A + i + (k+y)*lda));
-        }else if (leftover_collumn==3){
-           tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
-           tempA[k*4 + i*BLOCK_SIZE + 1 + 4*y] = A[(i+1) + (k+y)*lda];
-           tempA[k*4 + i*BLOCK_SIZE + 2 + 4*y] = A[(i+2) + (k+y)*lda];
-        }else if (leftover_collumn==2){
-           tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
-           tempA[k*4 + i*BLOCK_SIZE + 1 + 4*y] = A[(i+1) + (k+y)*lda];
+      // printf("A_leftover_row=%d A_leftover_collumn=%d \n", leftover_row, leftover_collumn);
+      for (int y = 0; y < 4; ++y){
+        if (y>= leftover_row){
+          tempA[k*4 + i*BLOCK_SIZE  + 4*y] = 0;
+          tempA[k*4 + i*BLOCK_SIZE  + 1 +4*y] = 0;
+          tempA[k*4 + i*BLOCK_SIZE  + 2 +4*y] = 0;
+          tempA[k*4 + i*BLOCK_SIZE  + 3 +4*y] = 0;
         }else{
-           tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
-        }
-            
+          if (leftover_collumn==4){
+              _mm256_store_pd(tempA + k*4 + i*BLOCK_SIZE + 4*y, _mm256_loadu_pd(A + i + (k+y)*lda));
+          }else if (leftover_collumn==3){
+             tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
+             tempA[k*4 + i*BLOCK_SIZE + 1 + 4*y] = A[(i+1) + (k+y)*lda];
+             tempA[k*4 + i*BLOCK_SIZE + 2 + 4*y] = A[(i+2) + (k+y)*lda];
+             tempA[k*4 + i*BLOCK_SIZE + 3 + 4*y] = 0;
+          }else if (leftover_collumn==2){
+             tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
+             tempA[k*4 + i*BLOCK_SIZE + 1 + 4*y] = A[(i+1) + (k+y)*lda];
+             tempA[k*4 + i*BLOCK_SIZE + 2 + 4*y] = 0;
+             tempA[k*4 + i*BLOCK_SIZE + 3 + 4*y] = 0;
+          }else{
+             tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
+             tempA[k*4 + i*BLOCK_SIZE + 1 + 4*y] = 0;
+             tempA[k*4 + i*BLOCK_SIZE + 2 + 4*y] = 0;
+             tempA[k*4 + i*BLOCK_SIZE + 3 + 4*y] = 0;
+          }
+        } 
           // tempA[k*4 + i*BLOCK_SIZE + 4*y] = A[(i) + (k+y)*lda];
           // tempA[k*4 + i*BLOCK_SIZE + 1 + 4*y] = A[(i+1) + (k+y)*lda];
           // tempA[k*4 + i*BLOCK_SIZE + 2 + 4*y] = A[(i+2) + (k+y)*lda];
@@ -154,19 +169,19 @@ static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A,
       }
     }
   }
-
-  // print_matrix(tempA, M, K, 4);
+  // printf("tempA\n");
+  // print_matrix(tempA, BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
   // print_matrix(tempA + 16, 4, 4, 4);
   // print_matrix(A, M, K, lda);
 
-  double tempC[16];
   /* For each row i of A */
   for (int j = 0; j < N; j += 4)
     /* For each column j of B */ 
     for (int i = 0; i < M; i+=4)
     {
       // Reset tempC to zero.
-      memset(tempC, 0, sizeof(tempC));
+      double tempC[16]={0};
+      // memset(tempC, 0, sizeof(tempC));
       // print_matrix(tempC, 4, 4, 1);
       /* Compute C(i,j) */
       for (int k = 0; k < K; k += 4)
@@ -179,20 +194,25 @@ static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A,
       }
       // print_matrix(tempA, 4, 4, 4);
       // print_matrix(B, 4, 4, 4);
-      // print_matrix(tempC, 4, 4, 4);
-      // printf("ok\n");
+      // printf("inner: i=%d j=%d\n", i, j);
       // Add back to C matrix
       int leftover_row = min (4,M-i);
       int leftover_collumn = min(4, N-j);
-      // printf("%d %d",leftover_row, leftover_collumn);
-      addfrom4by4(tempC, C + i + lda*j, ldc, leftover_row, leftover_collumn);
+      // printf("leftover_row=%d leftover_collumn=%d",leftover_row, leftover_collumn);
+      // printf("tempC\n");
+      // print_matrix(tempC, 4, 4, 4);
+      addfrom4by4(tempC, C + i + ldc*j, ldc, leftover_row, leftover_collumn);
+      // printf("C\n");
+      // print_matrix(C, 5, 5, ldc);
+
     }
 }
 
 /* This routine performs a dgemm operation
  *  C := C + A * B
  * where A, B, and C are lda-by-lda matrices stored in column-major format. 
- * On exit, A and B maintain their input values. */  
+ * On exit, A and B maintain their input values. */ 
+ 
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
   // print_matrix(A, lda, lda, lda);
@@ -209,11 +229,11 @@ void square_dgemm (int lda, double* A, double* B, double* C)
   int M = min (BLOCK_SIZE, lda-i);
   int N = min (BLOCK_SIZE, lda-j);
   int K = min (BLOCK_SIZE, lda-k);
-
+  // printf("i=%d j=%d k=%d\n", i, j, k);
   /* Perform individual block dgemm */
   // printf("%d %d %d", M, N, K);
   do_block(lda, lda, lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
       }
-//   print_matrix(C, lda, lda, lda);
-//  exit(0);
+ //  print_matrix(C, lda, lda, lda);
+ // exit(0);
 }
