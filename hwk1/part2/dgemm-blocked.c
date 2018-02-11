@@ -1,25 +1,31 @@
+/* 
+    Please include compiler name below (you may also include any other modules you would like to be loaded)
+
+COMPILER= gnu
+
+    Please include All compiler flags and libraries as you want them run. You can simply copy this over from the Makefile's first few lines
+ 
+CC = cc
+OPT = -O3
+CFLAGS = -Wall -std=gnu99 $(OPT)
+MKLROOT = /opt/intel/composer_xe_2013.1.117/mkl
+LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)
+/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
+
+*/
 #include <stdio.h>
 #include <string.h>
 #include <immintrin.h>
+#include <omp.h>
 const char* dgemm_desc = "Simple blocked dgemm.";
 
 #if !defined(BLOCK_SIZE)
-#define BLOCK_SIZE 256
+#define BLOCK_SIZE 32
 #endif
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
-static void print_matrix(double* A, int M, int N, int lda){
-  for(int i=0; i<M; ++i){
-    for(int j=0; j<N; ++j){
-      printf("%.3lf\t", *(A+i+j*lda));
-    }
-    printf("\n");
-  }
-  printf("\n");
-}
-
-static void avx_mult(double* A, double* B, double* restrict C, int lda, int ldb){
+void avx_mult(double* A, double* B, double* C, int lda, int ldb){
   __m256d a1 = _mm256_load_pd(A);
   __m256d a2 = _mm256_load_pd(A+lda);
   __m256d a3 = _mm256_load_pd(A+2*lda);
@@ -55,7 +61,7 @@ static void avx_mult(double* A, double* B, double* restrict C, int lda, int ldb)
 
 }
 
-static void addfrom4by4(double* temp, double* restrict dest, int lda, int leftover_row, int leftover_collumn){
+void addfrom4by4(double* temp, double* dest, int lda, int leftover_row, int leftover_collumn){
   for (int x = 0; x<leftover_collumn; ++x){
     if (leftover_row == 4){
       dest[lda*x] += temp[4*x];
@@ -80,15 +86,14 @@ static void addfrom4by4(double* temp, double* restrict dest, int lda, int leftov
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */ 
 
-double static tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(64)));  
-
-static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A, double* B, double* restrict C)
+void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A, double* B, double* C)
 {
+  double tempA[BLOCK_SIZE * BLOCK_SIZE * sizeof(double)] __attribute__((aligned(64)));  
   for(int k = 0; k<K; k += 4){
     for (int i =0; i<M; i += 4){
       int leftover_collumn = min(4, M-i);
       int leftover_row = min(4, K-k);
-      
+      // printf("A_leftover_row=%d A_leftover_collumn=%d \n", leftover_row, leftover_collumn);
       for (int y = 0; y < 4; ++y){
         if (y>= leftover_row){
           tempA[k*4 + i*BLOCK_SIZE  + 4*y] = 0;
@@ -139,45 +144,37 @@ static void do_block (int lda, int ldb, int ldc, int M, int N, int K, double* A,
 /* This routine performs a dgemm operation
  *  C := C + A * B
  * where A, B, and C are lda-by-lda matrices stored in column-major format. 
- * On exit, A and B maintain their input values. */  
+ * On exit, A and B maintain their input values. */ 
+ 
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
-  omp_set_num_threads(32);
-  #pragma omp parallel 
-  {
-    int id = omp_get_thread_num();
-    //printf("%d\n", id);
-    int aa = id/4;
-    int bb = id%4;
-    // int nthrds = omp_get_num_threads();
-    // printf("%d\n", nthrds);
-    // #pragma omp for
-    /* For each block-row of A */ 
-    // double* Cloc = NULL;
-    // Cloc = (double*) malloc ((lda/4) * (lda/8) * sizeof(double));
-    // memset (Cloc, 0, (lda/4) * (lda/8) * sizeof(double));
-    for (int j = 0; j < lda/8; j += BLOCK_SIZE)
-    for (int i = 0; i < lda/4; i += BLOCK_SIZE)
-      /* For each block-column of B */
+/* Each thread will work on a column block of C*/
+/* num_divisions define the number of such column divisions of C */
+/* zlim and flag are defined for the edge cases, i.e. when (lda % 32) != 0 */
+ int num_divisions = lda/32;
+ int zlim = lda;
+ int flag = 0;
+ if (lda % 32 == 31)
+ 	num_divisions++;
+ else if (lda % 32 == 1)
+ 	{zlim = lda-1; flag = 1;}
+
+ omp_set_num_threads(32);
+ #pragma omp parallel for
+ for (int z = 0; z < zlim; z += num_divisions)
+  /* For each block-column of B */ 
+  for (int j = z; j < z + num_divisions + 1; j += BLOCK_SIZE)
+    /* For each block-row of A */
+    for (int i = 0; i < lda; i += BLOCK_SIZE)
+      /* Accumulate block dgemms into block of C */
+      for (int k = 0; k < lda; k += BLOCK_SIZE)
       {
-        /* Accumulate block dgemms into block of C */
-        int M = min (BLOCK_SIZE, lda/4-i);
-        int N = min (BLOCK_SIZE, lda/8-j);
-        for (int k = 0; k < lda; k += BLOCK_SIZE)
-        {
-          /* Correct block dimensions if block "goes off edge of" the matrix */
-          int K = min (BLOCK_SIZE, lda-k);
-
-          /* Perform individual block dgemm */
-          do_block(lda,lda,lda, M, N, K, A + i + bb*lda/4 + k*lda, B + k + (j+ aa*(lda/8))*lda, 
-            C + i + bb*lda/4 + (j + aa*(lda/8))*lda);
-          // do_block(lda, M, N, K, A + i + bb*lda/4 + k*lda, B + k + (j+ aa*(lda/8))*lda, Cloc + i + j*(lda/4));
-        }
-        // //#pragma omp critical
-        // for (int jj = 0; jj<lda/8; jj++)
-        //  for (int ii = 0; ii<lda/4; ii++)
-        //    C[i + bb*lda/4 + ii + (j + aa*(lda/8) + jj)*lda] += Cloc[ii + jj*(lda/4)];
+        // Correct block dimensions if block "goes off edge of" the matrix 
+        int M = min (BLOCK_SIZE, lda-i);
+        int N = min (BLOCK_SIZE, z + num_divisions -j);
+        int K = min (BLOCK_SIZE, lda-k);
+        if ((z==zlim - num_divisions) && flag==1)
+        	N = min (BLOCK_SIZE, z + 1 + num_divisions -j);
+        do_block(lda, lda, lda, M, N, K, A + i + k*lda, B + k + j*lda, C + i + j*lda);
       }
-
-  }
 }
