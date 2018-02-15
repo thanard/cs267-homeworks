@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <math.h>
 #include "common.h"
+#include "grid.h"
 
 //
 //  benchmarking program
@@ -35,6 +36,16 @@ int main( int argc, char **argv )
     set_size( n );
     init_particles( n, particles );
     
+    // Set up grids
+    int gridSize = (get_size()/get_cutoff()) + 1; // TODO: Rounding errors?
+    grid_t grid;
+    grid_init(grid, gridSize);
+    for (int i = 0; i < n; ++i)
+    {
+        grid_add(grid, &particles[i]);
+    }
+
+
     //
     //  simulate a number of time steps
     //
@@ -51,15 +62,46 @@ int main( int argc, char **argv )
         for( int i = 0; i < n; i++ )
         {
             particles[i].ax = particles[i].ay = 0;
-            for (int j = 0; j < n; j++ )
-				apply_force( particles[i], particles[j],&dmin,&davg,&navg);
+    //         for (int j = 0; j < n; j++ )
+				// apply_force( particles[i], particles[j],&dmin,&davg,&navg);
+                        // Use the grid to traverse neighbours
+            int gx = grid_coord(particles[i].x);
+            int gy = grid_coord(particles[i].y);
+
+            for(int x = max(gx - 1, 0); x <= min(gx + 1, gridSize-1); x++)
+            {
+                for(int y = max(gy - 1, 0); y <= min(gy + 1, gridSize-1); y++)
+                {
+                    linkedlist_t * curr = grid.grid[x * grid.size + y];
+                    while(curr != 0)
+                    {
+                        apply_force(particles[i], *(curr->value), &dmin, &davg, &navg);
+                        curr = curr->next;
+                    }
+                }
+            }
         }
  
         //
         //  move particles
         //
         for( int i = 0; i < n; i++ ) 
-            move( particles[i] );		
+        {
+            int gc = grid_coord_flat(grid.size, particles[i].x, particles[i].y);
+
+            move(particles[i]);
+
+            // Re-add the particle if it has changed grid position
+            if (gc != grid_coord_flat(grid.size, particles[i].x, particles[i].y))
+            {
+                if (! grid_remove(grid, &particles[i], gc))
+                {
+                    fprintf(stdout, "Error: Failed to remove particle '%p'. Code must be faulty. Blame source writer.\n", &particles[i]);
+                    exit(3);
+                }
+                grid_add(grid, &particles[i]);
+            }
+        }
 
         if( find_option( argc, argv, "-no" ) == -1 )
         {

@@ -28,6 +28,9 @@ typedef struct
 //
 double read_timer( );
 
+double get_size();
+double get_cutoff();
+
 //
 //  simulation routines
 //

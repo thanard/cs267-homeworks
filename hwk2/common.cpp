@@ -44,6 +44,15 @@ void set_size( int n )
     size = sqrt( density * n );
 }
 
+double get_cutoff(){
+    return cutoff;
+}
+
+double get_size()
+{
+    return size;
+}
+
 //
 //  Initialize the particle positions and velocities
 //
