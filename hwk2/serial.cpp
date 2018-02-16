@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+
 #include "common.h"
-#include "grid.h"
 
 //
 //  benchmarking program
