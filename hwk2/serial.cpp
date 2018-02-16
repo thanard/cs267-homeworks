@@ -62,9 +62,7 @@ int main( int argc, char **argv )
         for( int i = 0; i < n; i++ )
         {
             particles[i].ax = particles[i].ay = 0;
-    //         for (int j = 0; j < n; j++ )
-				// apply_force( particles[i], particles[j],&dmin,&davg,&navg);
-                        // Use the grid to traverse neighbours
+
             int gx = grid_coord(particles[i].x);
             int gy = grid_coord(particles[i].y);
 
