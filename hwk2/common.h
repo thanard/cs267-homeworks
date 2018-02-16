@@ -64,25 +64,6 @@ struct linkedlist
 
 typedef struct linkedlist linkedlist_t;
 
-struct grid
-{
-	int size;
-	linkedlist_t ** grid;
-};
-
-typedef struct grid grid_t;
-
-//
-// grid routines
-//
-
-void grid_init(grid_t & grid, int gridsize);
-void grid_add(grid_t & grid, particle_t * particle);
-bool grid_remove(grid_t & grid, particle_t * p, int gridCoord = -1);
-void grid_clear(grid_t & grid);
-int  grid_size(grid_t & grid);
-
-
 //
 // Calculate the grid coordinate from a real coordinate
 //

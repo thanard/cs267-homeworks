@@ -17,14 +17,6 @@ struct grid_omp
 
 typedef struct grid_omp grid_omp_t;
 
-// void grid_init_omp(grid_omp_t & grid, int gridsize);
-// void grid_add_omp(grid_omp_t & grid, particle_t * particle);
-// bool grid_remove_omp(grid_omp_t & grid, particle_t * p, int gridCoord = -1);
-// void grid_clear_omp(grid_omp_t & grid);
-// int  grid_size_omp(grid_omp_t & grid);
-//
-// initialize grid and fill it with particles
-// 
 void grid_init_omp(grid_omp_t & grid, int size)
 {
     grid.size = size;
@@ -111,39 +103,6 @@ bool grid_remove_omp(grid_omp_t & grid, particle_t * p, int gridCoord)
     omp_unset_lock(&grid.lock[gridCoord]);
     // add_critical_time(read_timer() - critical_time);
     return !!current;
-}
-
-//
-// clears a grid from values and deallocates any memory from the heap.
-//
-void grid_clear_omp(grid_omp_t & grid)
-{
-    for (int i = 0; i < grid.size*grid.size; ++i)
-    {
-        linkedlist_t * curr = grid.grid[i];
-        while(curr != 0)
-        {
-            linkedlist_t * tmp = curr->next;
-            free(curr);
-            curr = tmp;
-        }
-    }
-    free(grid.grid);
-}
-
-int grid_size_omp(grid_omp_t & grid)
-{
-    int count = 0;
-    for (int i = 0; i < grid.size * grid.size; ++i)
-    {
-        linkedlist_t * curr = grid.grid[i];
-        while(curr != 0)
-        {
-            count++;
-            curr = curr->next;
-        }
-    }
-    return count;
 }
 
 //
