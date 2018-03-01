@@ -77,6 +77,7 @@ int main( int argc, char **argv )
     //  initialize and distribute the particles (that's fine to leave it unoptimized)
     //
     MPI_Status status;
+    MPI_Request request;
     set_size( n );
     double pool_size = get_size()/n_proc;
     double cutoff = get_cutoff();
@@ -101,7 +102,7 @@ int main( int argc, char **argv )
     }else{
         MPI_Recv(pool_local, n, PARTICLE, 0, rank, MPI_COMM_WORLD, &status);
         // MPI_Recv(&nlocal, 1, MPI_INT, 0, rank+n_proc, MPI_COMM_WORLD, &status);
-        MPI_Get_count(&status, MPI_INT, &nlocal)
+        MPI_Get_count(&status, MPI_INT, &nlocal);
     }
 
     // MPI_Scatterv( particles, partition_sizes, partition_offsets, PARTICLE, local, nlocal, PARTICLE, 0, MPI_COMM_WORLD );
@@ -110,8 +111,8 @@ int main( int argc, char **argv )
     //  simulate a number of time steps
     //
     double simulation_time = read_timer( );
-    particles_t* local_lowerband = (particles_t*) malloc(n * sizeof(particles_t));
-    particles_t* local_upperband = (particles_t*) malloc(n * sizeof(particles_t));
+    particle_t* local_lowerband = (particle_t*) malloc(n * sizeof(particle_t));
+    particle_t* local_upperband = (particle_t*) malloc(n * sizeof(particle_t));
     int local_n_lowerband = 0;
     int local_n_upperband = 0;
     
@@ -127,27 +128,27 @@ int main( int argc, char **argv )
 
         if(rank >=1){
             int n_lowerband = 0;
-            particles_t* lowerband = (particles_t*) malloc(nlocal * sizeof(particles_t));        
+            particle_t* tmp_lowerband = (particle_t*) malloc(nlocal * sizeof(particle_t)); 
             for(int i=0; i<nlocal; i++){
                 if (pool_size * rank + cutoff >= pool_local[i].y){
-                    lowerband[n_lowerband] = pool_local[i]
-                    n_lowerband += 1
+                    tmp_lowerband[n_lowerband] = pool_local[i];
+                    n_lowerband += 1;
                 }
             }
-            MPI_Isend(lowerband, n_lowerband, PARTICLE, rank-1, (step+1)*n_proc + rank-1, MPI_COMM_WORLD);
+            MPI_Isend(tmp_lowerband, n_lowerband, PARTICLE, rank-1, (step+1)*n_proc + rank-1, MPI_COMM_WORLD, &request);
             MPI_Recv(local_upperband, n, PARTICLE, rank+1, (step-1)*n_proc + rank, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, MPI_INT, &local_n_upperband);
         }
         if (rank < n_proc-1){
             int n_upperband = 0;
-            particles_t* upperband = (particles_t*) malloc(nlocal * sizeof(particles_t));
+            particle_t* tmp_upperband = (particle_t*) malloc(nlocal * sizeof(particle_t));
             for(int i=0; i<nlocal; i++){
-            if (pool_size*(rank +1) - cutoff < pool_local[i].y) {
-                    upperband[n_upperband] = pool_local[i];
+                if (pool_size*(rank +1) - cutoff < pool_local[i].y) {
+                    tmp_upperband[n_upperband] = pool_local[i];
                     n_upperband += 1;
                 }
             }
-            MPI_Isend(upperband, n_upperband, PARTICLE, rank+1, (NSTEPS + step+1)*n_proc + rank+1, MPI_COMM_WORLD);
+            MPI_Isend(tmp_upperband, n_upperband, PARTICLE, rank+1, (NSTEPS + step+1)*n_proc + rank+1, MPI_COMM_WORLD, &request);
             MPI_Recv(local_lowerband, n, PARTICLE, rank-1, (NSTEPS + step+1)*n_proc + rank, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, MPI_INT, &local_n_lowerband);
         }
@@ -168,8 +169,8 @@ int main( int argc, char **argv )
                 apply_force( pool_local[i], pool_local[j], &dmin, &davg, &navg );
             for (int j = 0; j < local_n_lowerband; j++ )
                 apply_force( pool_local[i], local_lowerband[j], &dmin, &davg, &navg );
-            for (int j = 0; j < upper_n_lowerband; j++ )
-                apply_force( pool_local[i], upper_lowerband[j], &dmin, &davg, &navg );
+            for (int j = 0; j < local_n_upperband; j++ )
+                apply_force( pool_local[i], local_upperband[j], &dmin, &davg, &navg );
         }
     
         if( find_option( argc, argv, "-no" ) == -1 )
