@@ -57,20 +57,21 @@ int main( int argc, char **argv )
     //
     //  set up the data partitioning across processors
     //
-    int particle_per_proc = (n + n_proc - 1) / n_proc;
-    int *partition_offsets = (int*) malloc( (n_proc+1) * sizeof(int) );
-    for( int i = 0; i < n_proc+1; i++ )
-        partition_offsets[i] = min( i * particle_per_proc, n );
+    // int particle_per_proc = (n + n_proc - 1) / n_proc;
+    // int *partition_offsets = (int*) malloc( (n_proc+1) * sizeof(int) );
+    // for( int i = 0; i < n_proc+1; i++ )
+    //     partition_offsets[i] = min( i * particle_per_proc, n );
     
-    int *partition_sizes = (int*) malloc( n_proc * sizeof(int) );
-    for( int i = 0; i < n_proc; i++ )
-        partition_sizes[i] = partition_offsets[i+1] - partition_offsets[i];
+    // int *partition_sizes = (int*) malloc( n_proc * sizeof(int) );
+    // for( int i = 0; i < n_proc; i++ )
+    //     partition_sizes[i] = partition_offsets[i+1] - partition_offsets[i];
     
     //
     //  allocate storage for local partition
     //
-    int nlocal = partition_sizes[rank];
-    particle_t *local = (particle_t*) malloc( nlocal * sizeof(particle_t) );
+    // int nlocal = partition_sizes[rank];
+    // particle_t *local = (particle_t*) malloc( nlocal * sizeof(particle_t) );
+    int nlocal;
     
     //
     //  initialize and distribute the particles (that's fine to leave it unoptimized)
@@ -114,7 +115,7 @@ int main( int argc, char **argv )
         // 
         //  collect all global data locally (not good idea to do)
         //
-        MPI_Allgatherv( pool_local, nlocal, PARTICLE, particles, partition_sizes, partition_offsets, PARTICLE, MPI_COMM_WORLD );
+        // MPI_Allgatherv( pool_local, nlocal, PARTICLE, particles, partition_sizes, partition_offsets, PARTICLE, MPI_COMM_WORLD );
         
         //
         //  save current step if necessary (slightly different semantics than in other codes)
@@ -128,9 +129,9 @@ int main( int argc, char **argv )
         //
         for( int i = 0; i < nlocal; i++ )
         {
-            local[i].ax = local[i].ay = 0;
+            pool_local[i].ax = pool_local[i].ay = 0;
             for (int j = 0; j < n; j++ )
-                apply_force( local[i], particles[j], &dmin, &davg, &navg );
+                apply_force( pool_local[i], particles[j], &dmin, &davg, &navg );
         }
      
         if( find_option( argc, argv, "-no" ) == -1 )
@@ -157,7 +158,7 @@ int main( int argc, char **argv )
         //  move particles
         //
         for( int i = 0; i < nlocal; i++ )
-            move( local[i] );
+            move( pool_local[i] );
     }
     simulation_time = read_timer( ) - simulation_time;
   
@@ -194,7 +195,7 @@ int main( int argc, char **argv )
         fclose( fsum );
     free( partition_offsets );
     free( partition_sizes );
-    free( local );
+    free( pool_local );
     free( particles );
     if( fsave )
         fclose( fsave );
