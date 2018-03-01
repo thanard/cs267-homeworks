@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 #include "common.h"
 
 //
@@ -74,10 +75,32 @@ int main( int argc, char **argv )
     //
     //  initialize and distribute the particles (that's fine to leave it unoptimized)
     //
+    MPI_Status status;
     set_size( n );
-    if( rank == 0 )
+    particle_t* pool_local = (particle_t*) malloc(n * sizeof(particle_t));
+    if( rank == 0 ){
         init_particles( n, particles );
-    MPI_Scatterv( particles, partition_sizes, partition_offsets, PARTICLE, local, nlocal, PARTICLE, 0, MPI_COMM_WORLD );
+        particle_t* pool = (particle_t*) malloc(n * n_proc * sizeof(particle_t));
+        double pool_size = get_size()/n_proc;
+        int *partition_sizes = (int*) malloc( n_proc * sizeof(int) );
+        for(int i=0; i<n; i++){
+            int pool_idx = int(particles[i].y/pool_size);
+            int j = partition_sizes[pool_idx];
+            pool[j + n*pool_idx] = particles[i];
+            if (pool_idx==0)
+                pool_local[j] = particles[i];
+            partition_sizes[pool_idx] += 1;
+        }
+        for(int i=0; i<n_proc; i++){
+            MPI_Send(pool + n*i, partition_sizes[i], PARTICLE, i, i, MPI_COMM_WORLD);
+            MPI_Send(partition_sizes+i, 1, MPI_INT, i, i+n_proc, MPI_COMM_WORLD);
+        }
+    }else{
+        MPI_Recv(pool_local, n, PARTICLE, 0, rank, MPI_COMM_WORLD, &status);
+        MPI_Recv(nlocal, 1, MPI_INT, 0, rank+n_proc, MPI_COMM_WORLD, &status);
+    }
+
+    // MPI_Scatterv( particles, partition_sizes, partition_offsets, PARTICLE, local, nlocal, PARTICLE, 0, MPI_COMM_WORLD );
     
     //
     //  simulate a number of time steps
@@ -91,7 +114,7 @@ int main( int argc, char **argv )
         // 
         //  collect all global data locally (not good idea to do)
         //
-        MPI_Allgatherv( local, nlocal, PARTICLE, particles, partition_sizes, partition_offsets, PARTICLE, MPI_COMM_WORLD );
+        MPI_Allgatherv( pool_local, nlocal, PARTICLE, particles, partition_sizes, partition_offsets, PARTICLE, MPI_COMM_WORLD );
         
         //
         //  save current step if necessary (slightly different semantics than in other codes)
