@@ -78,11 +78,12 @@ int main( int argc, char **argv )
     //
     MPI_Status status;
     set_size( n );
+    double pool_size = get_size()/n_proc;
+    double cutoff = get_cutoff();
     particle_t* pool_local = (particle_t*) malloc(n * sizeof(particle_t));
     if( rank == 0 ){
         init_particles( n, particles );
         particle_t* pool = (particle_t*) malloc(n * n_proc * sizeof(particle_t));
-        double pool_size = get_size()/n_proc;
         int *partition_sizes = (int*) malloc( n_proc * sizeof(int) );
         for(int i=0; i<n; i++){
             int pool_idx = int(particles[i].y/pool_size);
@@ -94,11 +95,13 @@ int main( int argc, char **argv )
         }
         for(int i=0; i<n_proc; i++){
             MPI_Send(pool + n*i, partition_sizes[i], PARTICLE, i, i, MPI_COMM_WORLD);
-            MPI_Send(partition_sizes+i, 1, MPI_INT, i, i+n_proc, MPI_COMM_WORLD);
+            // MPI_Send(partition_sizes+i, 1, MPI_INT, i, i+n_proc, MPI_COMM_WORLD);
         }
+        free( partition_sizes );
     }else{
         MPI_Recv(pool_local, n, PARTICLE, 0, rank, MPI_COMM_WORLD, &status);
-        MPI_Recv(nlocal, 1, MPI_INT, 0, rank+n_proc, MPI_COMM_WORLD, &status);
+        // MPI_Recv(&nlocal, 1, MPI_INT, 0, rank+n_proc, MPI_COMM_WORLD, &status);
+        MPI_Get_count(&status, MPI_INT, &nlocal)
     }
 
     // MPI_Scatterv( particles, partition_sizes, partition_offsets, PARTICLE, local, nlocal, PARTICLE, 0, MPI_COMM_WORLD );
@@ -107,6 +110,11 @@ int main( int argc, char **argv )
     //  simulate a number of time steps
     //
     double simulation_time = read_timer( );
+    particles_t* local_lowerband = (particles_t*) malloc(n * sizeof(particles_t));
+    particles_t* local_upperband = (particles_t*) malloc(n * sizeof(particles_t));
+    int local_n_lowerband = 0;
+    int local_n_upperband = 0;
+    
     for( int step = 0; step < NSTEPS; step++ )
     {
         navg = 0;
@@ -116,7 +124,33 @@ int main( int argc, char **argv )
         //  collect all global data locally (not good idea to do)
         //
         // MPI_Allgatherv( pool_local, nlocal, PARTICLE, particles, partition_sizes, partition_offsets, PARTICLE, MPI_COMM_WORLD );
-        
+
+        if(rank >=1){
+            int n_lowerband = 0;
+            particles_t* lowerband = (particles_t*) malloc(nlocal * sizeof(particles_t));        
+            for(int i=0; i<nlocal; i++){
+                if (pool_size * rank + cutoff >= pool_local[i].y){
+                    lowerband[n_lowerband] = pool_local[i]
+                    n_lowerband += 1
+                }
+            }
+            MPI_Isend(lowerband, n_lowerband, PARTICLE, rank-1, (step+1)*n_proc + rank-1, MPI_COMM_WORLD);
+            MPI_Recv(local_upperband, n, PARTICLE, rank+1, (step-1)*n_proc + rank, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, MPI_INT, &local_n_upperband);
+        }
+        if (rank < n_proc-1){
+            int n_upperband = 0;
+            particles_t* upperband = (particles_t*) malloc(nlocal * sizeof(particles_t));
+            for(int i=0; i<nlocal; i++){
+            if (pool_size*(rank +1) - cutoff < pool_local[i].y) {
+                    upperband[n_upperband] = pool_local[i];
+                    n_upperband += 1;
+                }
+            }
+            MPI_Isend(upperband, n_upperband, PARTICLE, rank+1, (NSTEPS + step+1)*n_proc + rank+1, MPI_COMM_WORLD);
+            MPI_Recv(local_lowerband, n, PARTICLE, rank-1, (NSTEPS + step+1)*n_proc + rank, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, MPI_INT, &local_n_lowerband);
+        }
         //
         //  save current step if necessary (slightly different semantics than in other codes)
         //
@@ -130,10 +164,14 @@ int main( int argc, char **argv )
         for( int i = 0; i < nlocal; i++ )
         {
             pool_local[i].ax = pool_local[i].ay = 0;
-            for (int j = 0; j < n; j++ )
-                apply_force( pool_local[i], particles[j], &dmin, &davg, &navg );
+            for (int j = 0; j < nlocal; j++ )
+                apply_force( pool_local[i], pool_local[j], &dmin, &davg, &navg );
+            for (int j = 0; j < local_n_lowerband; j++ )
+                apply_force( pool_local[i], local_lowerband[j], &dmin, &davg, &navg );
+            for (int j = 0; j < upper_n_lowerband; j++ )
+                apply_force( pool_local[i], upper_lowerband[j], &dmin, &davg, &navg );
         }
-     
+    
         if( find_option( argc, argv, "-no" ) == -1 )
         {
           
@@ -193,8 +231,7 @@ int main( int argc, char **argv )
     //
     if ( fsum )
         fclose( fsum );
-    free( partition_offsets );
-    free( partition_sizes );
+    // free( partition_offsets );
     free( pool_local );
     free( particles );
     if( fsave )
