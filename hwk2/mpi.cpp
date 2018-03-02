@@ -3,7 +3,91 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <string.h>
+
 #include "common.h"
+
+
+struct grid
+{
+    int size;
+    linkedlist_t ** grid;
+};
+
+typedef struct grid grid_t;
+
+//
+// initialize grid and fill it with particles
+// 
+void grid_init(grid_t & grid, int size)
+{
+    grid.size = size;
+
+    // Initialize grid
+    grid.grid = (linkedlist**) malloc(sizeof(linkedlist*) * size * size);
+
+    if (grid.grid == NULL)
+    {
+        fprintf(stderr, "Error: Could not allocate memory for the grid!\n");
+        exit(1);
+    }
+
+    memset(grid.grid, 0, sizeof(linkedlist*) * size * size);
+}
+
+//
+// adds a particle pointer to the grid
+//
+void grid_add(grid_t & grid, particle_t * p)
+{
+    int gridCoord = grid_coord_flat(grid.size, p->x, p->y);
+
+    linkedlist_t * newElement = (linkedlist_t *) malloc(sizeof(linkedlist));
+    newElement->value = p;
+
+    // Beginning of critical section
+    newElement->next = grid.grid[gridCoord];
+
+    grid.grid[gridCoord] = newElement;
+    // End of critical section
+}
+
+//
+// Removes a particle from a grid
+//
+bool grid_remove(grid_t & grid, particle_t * p, int gridCoord)
+{
+    if (gridCoord == -1)
+        gridCoord = grid_coord_flat(grid.size, p->x, p->y);
+
+    // No elements?
+    if (grid.grid[gridCoord] == 0)
+    {
+        return false;
+    }
+
+    // Beginning of critical section
+
+    linkedlist_t ** nodePointer = &(grid.grid[gridCoord]);
+    linkedlist_t * current = grid.grid[gridCoord];
+
+    while(current && (current->value != p))
+    {
+        nodePointer = &(current->next);
+        current = current->next;
+    }
+
+    if (current)
+    {
+        *nodePointer = current->next;
+        free(current);
+    }
+
+    // End of critical section
+
+    return !!current;
+}
+
 //
 //  benchmarking program
 //
@@ -93,6 +177,15 @@ int main( int argc, char **argv )
         MPI_Get_count(&status, PARTICLE, &nlocal);
     }
     
+    // Set up grids
+    int gridSize = (get_size()/get_cutoff()) + 1; // TODO: Rounding errors?
+    grid_t grid;
+    grid_init(grid, gridSize);
+    for (int i = 0; i < nlocal; ++i)
+    {
+        grid_add(grid, &pool_local[i]);
+    }
+
     //
     //  simulate a number of time steps
     //
@@ -152,16 +245,41 @@ int main( int argc, char **argv )
         //
         for( int i = 0; i < nlocal; i++ )
         {
+            // pool_local[i].ax = pool_local[i].ay = 0;
+            // for (int j = 0; j < nlocal; j++ )
+            //     apply_force( pool_local[i], pool_local[j], &dmin, &davg, &navg );
+            // for (int j = 0; j < local_n_lowerband; j++ )
+            //     apply_force( pool_local[i], local_lowerband[j], &dmin, &davg, &navg );
+            // for (int j = 0; j < local_n_upperband; j++ )
+            //     apply_force( pool_local[i], local_upperband[j], &dmin, &davg, &navg );
+            // if (pool_local[i].ay >10000){
+            //     printf("TO Large a = %f\n", pool_local[i].ay);
+            //     printf("i = %d, rank = %d, nlocal = %d, n_upper = %d, n_lower = %d\n", i, rank, nlocal, local_n_upperband, local_n_lowerband);
+            // }
             pool_local[i].ax = pool_local[i].ay = 0;
-            for (int j = 0; j < nlocal; j++ )
-                apply_force( pool_local[i], pool_local[j], &dmin, &davg, &navg );
-            for (int j = 0; j < local_n_lowerband; j++ )
-                apply_force( pool_local[i], local_lowerband[j], &dmin, &davg, &navg );
-            for (int j = 0; j < local_n_upperband; j++ )
-                apply_force( pool_local[i], local_upperband[j], &dmin, &davg, &navg );
-            if (pool_local[i].ay >10000){
-                printf("TO Large a = %f\n", pool_local[i].ay);
-                printf("i = %d, rank = %d, nlocal = %d, n_upper = %d, n_lower = %d\n", i, rank, nlocal, local_n_upperband, local_n_lowerband);
+
+            int gx = grid_coord(pool_local[i].x);
+            int gy = grid_coord(pool_local[i].y);
+
+            for(int x = max(gx - 1, 0); x <= min(gx + 1, gridSize-1); x++)
+            {
+                for(int y = max(gy - 1, grid_coord(rank*pool_size)); y <= min(gy + 1, grid_coord((rank+1)*pool_size)); y++)
+                {
+                    linkedlist_t * curr = grid.grid[x * grid.size + y];
+                    while(curr != 0)
+                    {
+                        apply_force(pool_local[i], *(curr->value), &dmin, &davg, &navg);
+                        curr = curr->next;
+                    }
+                }
+            }
+            if(gy ==grid_coord(rank*pool_size)){
+                for (int j = 0; j < local_n_lowerband; j++ )
+                    apply_force( pool_local[i], local_lowerband[j], &dmin, &davg, &navg );            
+            }
+            if (gy==grid_coord((rank+1)*pool_size)){
+                for (int j = 0; j < local_n_upperband; j++ )
+                    apply_force( pool_local[i], local_upperband[j], &dmin, &davg, &navg );
             }
         }
     
@@ -192,7 +310,9 @@ int main( int argc, char **argv )
         int sending_n_up = 0;
         int sending_n_lower = 0;
         for( int i = 0; i < nlocal; i++ ){
-            move( pool_local[i]);
+
+            move(pool_local[i]);
+
             // Update particles in different procs
             int flag = int(pool_local[i].y/pool_size);
             //if (rank ==3)
@@ -229,6 +349,25 @@ int main( int argc, char **argv )
             MPI_Get_count(&status2, PARTICLE, &tmp);
             nlocal += tmp;
         }
+
+        //
+        // Update grids
+        //
+        for(int i = 0; i < nlocal; i++){
+            int gc = grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y);
+
+            // Re-add the particle if it has changed grid position
+            if (gc != grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y))
+            {
+                if (! grid_remove(grid, &pool_local[i], gc))
+                {
+                    fprintf(stdout, "Error: Failed to remove particle '%p'. Code must be faulty. Blame source writer.\n", &pool_local[i]);
+                    exit(3);
+                }
+                grid_add(grid, &pool_local[i]);
+            }
+        }
+
         // printf("step: %d, rank: %d, nlocal: %d\n", step, rank, nlocal);
     }
     simulation_time = read_timer( ) - simulation_time;
