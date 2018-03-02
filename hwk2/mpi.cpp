@@ -4,10 +4,6 @@
 #include <assert.h>
 #include <math.h>
 #include "common.h"
-
-int which_pool(y, pool_size){
-    return int(y/pool_size);
-}
 //
 //  benchmarking program
 //
@@ -61,20 +57,6 @@ int main( int argc, char **argv )
     //
     //  set up the data partitioning across processors
     //
-    // int particle_per_proc = (n + n_proc - 1) / n_proc;
-    // int *partition_offsets = (int*) malloc( (n_proc+1) * sizeof(int) );
-    // for( int i = 0; i < n_proc+1; i++ )
-    //     partition_offsets[i] = min( i * particle_per_proc, n );
-    
-    // int *partition_sizes = (int*) malloc( n_proc * sizeof(int) );
-    // for( int i = 0; i < n_proc; i++ )
-    //     partition_sizes[i] = partition_offsets[i+1] - partition_offsets[i];
-    
-    //
-    //  allocate storage for local partition
-    //
-    // int nlocal = partition_sizes[rank];
-    // particle_t *local = (particle_t*) malloc( nlocal * sizeof(particle_t) );
     int nlocal = 0;
     
     //
@@ -112,7 +94,7 @@ int main( int argc, char **argv )
 
         for(int i=1; i<n_proc; i++)
             MPI_Send(&pool[n*i], partition_sizes[i], PARTICLE, i, i, MPI_COMM_WORLD);
-        //free( partition_sizes );
+        free( partition_sizes );
     }
     else
     {
@@ -122,9 +104,6 @@ int main( int argc, char **argv )
         MPI_Get_count(&status, PARTICLE, &nlocal);
         // printf("Nlocal rank: %d %d\n", nlocal, rank);
     }
-    // printf("%d\n", rank);
-
-    // MPI_Scatterv( particles, partition_sizes, partition_offsets, PARTICLE, local, nlocal, PARTICLE, 0, MPI_COMM_WORLD );
     
     //
     //  simulate a number of time steps
@@ -133,9 +112,13 @@ int main( int argc, char **argv )
     particle_t* local_lowerband = (particle_t*) malloc(n * sizeof(particle_t));
     particle_t* local_upperband = (particle_t*) malloc(n * sizeof(particle_t));
     particle_t* sending_up = (particle_t*) malloc(n * sizeof(particle_t));
-    particle_t* sending_lower = (particle_t*) malloc(n * sizeof(particle_t))
+    particle_t* sending_lower = (particle_t*) malloc(n * sizeof(particle_t));
     int local_n_lowerband = 0;
     int local_n_upperband = 0;
+
+    for (int i=0;i<nlocal;i++)
+        if (rank==3)
+            printf("Rank: %d, y: %f, index: %d\n", rank, pool_local[i].y, i);
 
     for( int step = 0; step < NSTEPS; step++ )
     {
@@ -146,7 +129,7 @@ int main( int argc, char **argv )
         //  collect all global data locally (not good idea to do)
         //
         // MPI_Allgatherv( pool_local, nlocal, PARTICLE, particles, partition_sizes, partition_offsets, PARTICLE, MPI_COMM_WORLD );
-        printf("step: %d\n",step); 
+        // printf("step: %d\n",step); 
         if(rank >=1){
             int n_lowerband = 0;
             particle_t* tmp_lowerband = (particle_t*) malloc(nlocal * sizeof(particle_t)); 
@@ -157,7 +140,7 @@ int main( int argc, char **argv )
                 }
             }
 
-            printf("rank nlocal n_lowerband %d %d %d\n", rank, nlocal, n_lowerband);
+            // printf("rank nlocal n_lowerband %d %d %d\n", rank, nlocal, n_lowerband);
             MPI_Isend(tmp_lowerband, n_lowerband, PARTICLE, rank-1, rank-1, MPI_COMM_WORLD, &request);
             MPI_Recv(local_lowerband, n, PARTICLE, rank-1, rank, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, PARTICLE, &local_n_upperband);
@@ -175,7 +158,7 @@ int main( int argc, char **argv )
             MPI_Recv(local_upperband, n, PARTICLE, rank+1, rank, MPI_COMM_WORLD, &status2);
             MPI_Get_count(&status2, PARTICLE, &local_n_lowerband);
         }
-        printf("local_n_lowerband rank %d %d \n", local_n_lowerband, rank);
+        // printf("local_n_lowerband rank %d %d \n", local_n_lowerband, rank);
         //
         //  save current step if necessary (slightly different semantics than in other codes)
         //
@@ -220,40 +203,49 @@ int main( int argc, char **argv )
         //
         //  move particles
         //
+        // for (int i=0; i<nlocal; i++){
+        // if (rank ==1)
+        //     printf ("Before y: %f %f %d\n", pool_local[i].y, pool_local[i].ay, i);}
         int k = 0;
+        int sending_n_up = 0;
+        int sending_n_lower = 0;
         for( int i = 0; i < nlocal; i++ ){
             move( pool_local[i]);
             // Update particles in different procs
-            int sending_n_up = 0;
-            int sending_n_lower = 0;
-            if (which_pool(pool_local[i].y, pool_size) == rank+1){
+            int flag = int(pool_local[i].y/pool_size);
+            //if (rank ==3)
+                // printf ("After y: %f %f\n", pool_local[i].y, pool_size);
+            if (flag == rank+1){
                 sending_up[sending_n_up] = pool_local[i];
                 ++sending_n_up;
-            }else if (which_pool(pool_local[i].y, pool_size) == rank-1){
-                sending_n_lower[sending_n_lower] = pool_local[i];
+            }else if (flag == rank-1){
+                sending_lower[sending_n_lower] = pool_local[i];
                 ++sending_n_lower;
-            }else if(which_pool(pool_local[i].y, pool_size) != rank){
-                printf("Error Something wrong: \n");
+            }else if(flag != rank){
+                //printf("ERROR, RANK, FLAG, INDEX, STEP: %d %d %d %d\n", rank, flag, i, step);
+                //printf ("After y: %f %f\n", pool_local[i].y, pool_size);
+                //exit(0);
             }
             else{
                 pool_local[k] = pool_local[i];
                 k++;
             }
+            //printf("Rank sending_n_up sending_n_lower: %d %d %d\n",rank, sending_n_up, sending_n_lower);
         }
         nlocal = k;
 
         if(rank>0){
             int tmp = 0;
-            MPI_Isend(sending_up, sending_n_up, PARTICLE, rank-1, rank-1, MPI_COMM_WORLD, &request);
+            MPI_Isend(sending_lower, sending_n_lower, PARTICLE, rank-1, rank-1, MPI_COMM_WORLD, &request);
             MPI_Recv(pool_local + nlocal, n-nlocal, PARTICLE, rank-1, rank, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, PARTICLE, &tmp);
             nlocal += tmp;
         }
         if(rank<n_proc-1){
             int tmp = 0;
-            MPI_Isend(sending_lower, sending_n_lower, PARTICLE, rank+1, rank+1, MPI_COMM_WORLD, &request);
-            MPI_Recv(pool_local + nlocal, n-nlocal, PARTICLE, rank+1, rank, MPI_COMM_WORLD, &status);
-            MPI_Get_count(&status, PARTICLE, &tmp);
+            MPI_Isend(sending_up, sending_n_up, PARTICLE, rank+1, rank+1, MPI_COMM_WORLD, &request2);
+            MPI_Recv(pool_local + nlocal, n-nlocal, PARTICLE, rank+1, rank, MPI_COMM_WORLD, &status2);
+            MPI_Get_count(&status2, PARTICLE, &tmp);
             nlocal += tmp;
         }
     }
@@ -293,6 +285,7 @@ int main( int argc, char **argv )
     // free( partition_offsets );
     free( pool_local );
     free( particles );
+    free(pool_local)
     if( fsave )
         fclose( fsave );
     
