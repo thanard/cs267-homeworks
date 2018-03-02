@@ -5,6 +5,9 @@
 #include <math.h>
 #include "common.h"
 
+int which_pool(y, pool_size){
+    return int(y/pool_size);
+}
 //
 //  benchmarking program
 //
@@ -129,9 +132,11 @@ int main( int argc, char **argv )
     double simulation_time = read_timer( );
     particle_t* local_lowerband = (particle_t*) malloc(n * sizeof(particle_t));
     particle_t* local_upperband = (particle_t*) malloc(n * sizeof(particle_t));
+    particle_t* sending_up = (particle_t*) malloc(n * sizeof(particle_t));
+    particle_t* sending_lower = (particle_t*) malloc(n * sizeof(particle_t))
     int local_n_lowerband = 0;
     int local_n_upperband = 0;
-    
+
     for( int step = 0; step < NSTEPS; step++ )
     {
         navg = 0;
@@ -215,8 +220,42 @@ int main( int argc, char **argv )
         //
         //  move particles
         //
-        for( int i = 0; i < nlocal; i++ )
-            move( pool_local[i] );
+        int k = 0;
+        for( int i = 0; i < nlocal; i++ ){
+            move( pool_local[i]);
+            // Update particles in different procs
+            int sending_n_up = 0;
+            int sending_n_lower = 0;
+            if (which_pool(pool_local[i].y, pool_size) == rank+1){
+                sending_up[sending_n_up] = pool_local[i];
+                ++sending_n_up;
+            }else if (which_pool(pool_local[i].y, pool_size) == rank-1){
+                sending_n_lower[sending_n_lower] = pool_local[i];
+                ++sending_n_lower;
+            }else if(which_pool(pool_local[i].y, pool_size) != rank){
+                printf("Error Something wrong: \n");
+            }
+            else{
+                pool_local[k] = pool_local[i];
+                k++;
+            }
+        }
+        nlocal = k;
+
+        if(rank>0){
+            int tmp = 0;
+            MPI_Isend(sending_up, sending_n_up, PARTICLE, rank-1, rank-1, MPI_COMM_WORLD, &request);
+            MPI_Recv(pool_local + nlocal, n-nlocal, PARTICLE, rank-1, rank, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, PARTICLE, &tmp);
+            nlocal += tmp;
+        }
+        if(rank<n_proc-1){
+            int tmp = 0;
+            MPI_Isend(sending_lower, sending_n_lower, PARTICLE, rank+1, rank+1, MPI_COMM_WORLD, &request);
+            MPI_Recv(pool_local + nlocal, n-nlocal, PARTICLE, rank+1, rank, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, PARTICLE, &tmp);
+            nlocal += tmp;
+        }
     }
     simulation_time = read_timer( ) - simulation_time;
   
