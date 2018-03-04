@@ -14,6 +14,10 @@ struct grid
     linkedlist_t ** grid;
 };
 
+bool is_in_block(double y, int rank, double pool_size){
+    return y >= rank*pool_size && y <=(rank+1)*pool_size;
+}
+
 typedef struct grid grid_t;
 
 //
@@ -311,7 +315,24 @@ int main( int argc, char **argv )
         int sending_n_lower = 0;
         for( int i = 0; i < nlocal; i++ ){
 
+            int gc = grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y);
+
             move(pool_local[i]);
+
+            // Re-add the particle if it has changed grid position
+            if (gc != grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y) || 
+                ! is_in_block(pool_local[i].y, rank, pool_size))
+            {
+                // Remove if out of block or change grid.
+                if (! grid_remove(grid, &pool_local[i], gc))
+                {
+                    fprintf(stdout, "Error: Failed to remove particle '%p'. Code must be faulty. Blame source writer.\n", &pool_local[i]);
+                    exit(3);
+                }
+                // Add back only if still in block.
+                if(is_in_block(pool_local[i].y, rank, pool_size))
+                    grid_add(grid, &pool_local[i]);
+            }
 
             // Update particles in different procs
             int flag = int(pool_local[i].y/pool_size);
@@ -351,21 +372,11 @@ int main( int argc, char **argv )
         }
 
         //
-        // Update grids
+        // Always add to grids for new particles.
         //
-        for(int i = 0; i < nlocal; i++){
+        for(int i = k; i < nlocal; i++){
             int gc = grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y);
-
-            // Re-add the particle if it has changed grid position
-            if (gc != grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y))
-            {
-                if (! grid_remove(grid, &pool_local[i], gc))
-                {
-                    fprintf(stdout, "Error: Failed to remove particle '%p'. Code must be faulty. Blame source writer.\n", &pool_local[i]);
-                    exit(3);
-                }
-                grid_add(grid, &pool_local[i]);
-            }
+            grid_add(grid, &pool_local[i]);
         }
 
         // printf("step: %d, rank: %d, nlocal: %d\n", step, rank, nlocal);
@@ -414,3 +425,4 @@ int main( int argc, char **argv )
     
     return 0;
 }
+
