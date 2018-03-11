@@ -277,11 +277,11 @@ int main( int argc, char **argv )
                     }
                 }
             }
-            if(gy ==grid_coord(rank*pool_size)){
+            if(pool_local[i].y <= rank*pool_size + cutoff){
                 for (int j = 0; j < local_n_lowerband; j++ )
                     apply_force( pool_local[i], local_lowerband[j], &dmin, &davg, &navg );            
             }
-            if (gy==grid_coord((rank+1)*pool_size)){
+            if (pool_local[i].y > (rank+1)*pool_size - cutoff){
                 for (int j = 0; j < local_n_upperband; j++ )
                     apply_force( pool_local[i], local_upperband[j], &dmin, &davg, &navg );
             }
@@ -313,26 +313,30 @@ int main( int argc, char **argv )
         int k = 0;
         int sending_n_up = 0;
         int sending_n_lower = 0;
+	int count = 0;
         for( int i = 0; i < nlocal; i++ ){
 
-            int gc = grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y);
+            //int gc = grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y);
 
             move(pool_local[i]);
 
             // Re-add the particle if it has changed grid position
-            if (gc != grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y) || 
-                ! is_in_block(pool_local[i].y, rank, pool_size))
-            {
+            //if (gc != grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y) || 
+            //    ! is_in_block(pool_local[i].y, rank, pool_size))
+            //{
                 // Remove if out of block or change grid.
-                if (! grid_remove(grid, &pool_local[i], gc))
-                {
-                    fprintf(stdout, "Error: Failed to remove particle '%p'. Code must be faulty. Blame source writer.\n", &pool_local[i]);
-                    exit(3);
-                }
-                // Add back only if still in block.
-                if(is_in_block(pool_local[i].y, rank, pool_size))
-                    grid_add(grid, &pool_local[i]);
-            }
+            //    if (! grid_remove(grid, &pool_local[i], gc))
+            //    {
+            //        printf("i=%d, gc=%d, gcf = %d", i, gc, grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y));
+	//	    fprintf(stdout, "Error: Failed to remove particle '%p'. Code must be faulty. Blame source writer.\n", &pool_local[i]);
+         //           exit(3);
+          //      }
+            //    // Add back only if still in block.
+            //    if(is_in_block(pool_local[i].y, rank, pool_size))
+            //        grid_add(grid, &pool_local[i]);
+            //    else
+	//	    count++;
+ 	  //  }
 
             // Update particles in different procs
             int flag = int(pool_local[i].y/pool_size);
@@ -354,6 +358,7 @@ int main( int argc, char **argv )
                 k++;
             }
         }
+	// printf("count=%d, n_up=%d, n_lower=%d\n", count, sending_n_up, sending_n_lower);
         nlocal = k;
 
         if(rank>0){
@@ -374,11 +379,16 @@ int main( int argc, char **argv )
         //
         // Always add to grids for new particles.
         //
-        for(int i = k; i < nlocal; i++){
-            int gc = grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y);
-            grid_add(grid, &pool_local[i]);
-        }
-
+	//printf("k=%d, nlocal=%d\n", k, nlocal);
+        //for(int i = k; i < nlocal; i++){
+            //int gc = grid_coord_flat(grid.size, pool_local[i].x, pool_local[i].y);
+            //grid_add(grid, &pool_local[i]);
+        //}
+	grid_init(grid, gridSize);
+    	for (int i = 0; i < nlocal; ++i)
+    	{
+      		grid_add(grid, &pool_local[i]);
+    	}
         // printf("step: %d, rank: %d, nlocal: %d\n", step, rank, nlocal);
     }
     simulation_time = read_timer( ) - simulation_time;
@@ -425,4 +435,5 @@ int main( int argc, char **argv )
     
     return 0;
 }
+
 
