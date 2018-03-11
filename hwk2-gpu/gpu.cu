@@ -8,6 +8,88 @@
 #define NUM_THREADS 256
 
 extern double size;
+
+
+struct grid
+{
+    int size;
+    linkedlist_t ** grid;
+};
+
+typedef struct grid grid_t;
+
+//
+// initialize grid and fill it with particles
+// 
+void grid_init(grid_t & grid, int size)
+{
+    grid.size = size;
+
+    // Initialize grid
+    grid.grid = (linkedlist**) malloc(sizeof(linkedlist*) * size * size);
+
+    if (grid.grid == NULL)
+    {
+        fprintf(stderr, "Error: Could not allocate memory for the grid!\n");
+        exit(1);
+    }
+
+    memset(grid.grid, 0, sizeof(linkedlist*) * size * size);
+}
+
+//
+// adds a particle pointer to the grid
+//
+void grid_add(grid_t & grid, particle_t * p)
+{
+    int gridCoord = grid_coord_flat(grid.size, p->x, p->y);
+
+    linkedlist_t * newElement = (linkedlist_t *) malloc(sizeof(linkedlist));
+    newElement->value = p;
+
+    // Beginning of critical section
+    newElement->next = grid.grid[gridCoord];
+
+    grid.grid[gridCoord] = newElement;
+    // End of critical section
+}
+
+//
+// Removes a particle from a grid
+//
+bool grid_remove(grid_t & grid, particle_t * p, int gridCoord)
+{
+    if (gridCoord == -1)
+        gridCoord = grid_coord_flat(grid.size, p->x, p->y);
+
+    // No elements?
+    if (grid.grid[gridCoord] == 0)
+    {
+        return false;
+    }
+
+    // Beginning of critical section
+
+    linkedlist_t ** nodePointer = &(grid.grid[gridCoord]);
+    linkedlist_t * current = grid.grid[gridCoord];
+
+    while(current && (current->value != p))
+    {
+        nodePointer = &(current->next);
+        current = current->next;
+    }
+
+    if (current)
+    {
+        *nodePointer = current->next;
+        free(current);
+    }
+
+    // End of critical section
+
+    return !!current;
+}
+
 //
 //  benchmarking program
 //
@@ -36,6 +118,8 @@ __global__ void compute_forces_gpu(particle_t * particles, int n)
 {
   // Get thread (particle) ID
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  printf("threadIdx.x=%d, blockIdx.x=%d, blockDim.x=%d\n", threadIdx.x,blockIdx.x, blockDim.x);
+
   if(tid >= n) return;
 
   particles[tid].ax = particles[tid].ay = 0;
@@ -108,6 +192,15 @@ int main( int argc, char **argv )
 
     init_particles( n, particles );
 
+    // Set up grids
+    int gridSize = (get_size()/get_cutoff()) + 1; // TODO: Rounding errors?
+    grid_t grid;
+    grid_init(grid, gridSize);
+    for (int i = 0; i < n; ++i)
+    {
+        grid_add(grid, &particles[i]);
+    }
+
     cudaThreadSynchronize();
     double copy_time = read_timer( );
 
@@ -130,6 +223,7 @@ int main( int argc, char **argv )
         //
 
 	int blks = (n + NUM_THREADS - 1) / NUM_THREADS;
+  // printf("blk=%d, num_threads=%d\n", blks, NUM_THREADS);
 	compute_forces_gpu <<< blks, NUM_THREADS >>> (d_particles, n);
         
         //

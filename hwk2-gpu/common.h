@@ -34,6 +34,9 @@ typedef struct
 //
 double read_timer( );
 
+double get_size();
+double get_cutoff();
+
 //
 //  simulation routines
 //
@@ -55,5 +58,29 @@ void save( FILE *f, int n, particle_t *p );
 int find_option( int argc, char **argv, const char *option );
 int read_int( int argc, char **argv, const char *option, int default_value );
 char *read_string( int argc, char **argv, const char *option, char *default_value );
+
+
+//
+// Grid
+//
+struct linkedlist
+{
+	linkedlist * next;
+	particle_t * value;
+};
+
+typedef struct linkedlist linkedlist_t;
+
+//
+// Calculate the grid coordinate from a real coordinate
+//
+inline static int grid_coord(double c)
+{
+    return (int)floor(c / get_cutoff());
+}
+inline static int grid_coord_flat(int size, double x, double y)
+{
+    return grid_coord(x) * size + grid_coord(y);
+}
 
 #endif
