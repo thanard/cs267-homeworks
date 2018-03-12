@@ -13,8 +13,10 @@ extern double size;
 struct grid
 {
     int size;
-    linkedlist_t ** grid;
-    linkedlist_t ** to_add[8];
+    linkedlist_t ** grid[9];
+    // 0 3 6
+    // 1 4 7
+    // 2 5 8
 };
 
 typedef struct grid grid_t;
@@ -27,12 +29,9 @@ void grid_init(grid_t & grid, grid_t & d_grid, int size)
     grid.size = size;
 
     // Initialize grid
-    grid.grid = (linkedlist**) malloc(sizeof(linkedlist*) * size * size);
-    memset(grid.grid, 0, sizeof(linkedlist*) * size * size);
-
-    for(int i=0; i<8;i++){
-      grid.to_add[i] = (linkedlist**) malloc(sizeof(linkedlist*) * size * size);
-      memset(grid.to_add[i], 0, sizeof(linkedlist*) * size * size);
+    for(int i=0; i<9;i++){
+      grid.grid[i] = (linkedlist**) malloc(sizeof(linkedlist*) * size * size);
+      memset(grid.grid[i], 0, sizeof(linkedlist*) * size * size);
     }
     // if (grid.grid == NULL)
     // {
@@ -41,9 +40,8 @@ void grid_init(grid_t & grid, grid_t & d_grid, int size)
     // }
 
     // Set gpu grid
-    cudaMalloc((void **) &d_grid.grid, size * size * sizeof(linkedlist*));
-    for (int i=0; i<8;i++){
-      cudaMalloc((void **) &d_grid.to_add[i], size * size * sizeof(linkedlist*));
+    for (int i=0; i<9;i++){
+      cudaMalloc((void **) &d_grid.grid[i], size * size * sizeof(linkedlist*));
     }
 }
 
@@ -58,36 +56,64 @@ void grid_add(grid_t & grid, particle_t * p)
     newElement->value = p;
 
     // Beginning of critical section
-    newElement->next = grid.grid[gridCoord];
+    newElement->next = grid.grid[4][gridCoord];
 
-    grid.grid[gridCoord] = newElement;
+    grid.grid[4][gridCoord] = newElement;
     // End of critical section
 }
 
 void grid_copy_to_cuda(grid_t & grid, grid_t & d_grid){
-    cudaMemcpy(d_grid.grid, grid.grid, size * size * sizeof(linkedlist*), cudaMemcpyHostToDevice);
-    for (int i=0; i<8;i++){
-      cudaMemcpy(d_grid.to_add[i], grid.to_add[i], size * size * sizeof(linkedlist*), cudaMemcpyHostToDevice);
+    for (int i=0; i<9;i++){
+      cudaMemcpy(d_grid.grid[i], grid.grid[i], size * size * sizeof(linkedlist*), cudaMemcpyHostToDevice);
     }
 }
+// //
+// // Removes a particle from a grid
+// //
+// bool grid_remove(grid_t & grid, particle_t * p, int gridCoord)
+// {
+//     if (gridCoord == -1)
+//         gridCoord = grid_coord_flat(grid.size, p->x, p->y);
+
+//     // No elements?
+//     if (grid.grid[gridCoord] == 0)
+//     {
+//         return false;
+//     }
+
+//     // Beginning of critical section
+
+//     linkedlist_t ** nodePointer = &(grid.grid[gridCoord]);
+//     linkedlist_t * current = grid.grid[gridCoord];
+
+//     while(current && (current->value != p))
+//     {
+//         nodePointer = &(current->next);
+//         current = current->next;
+//     }
+
+//     if (current)
+//     {
+//         *nodePointer = current->next;
+//         free(current);
+//     }
+
+//     // End of critical section
+
+//     return !!current;
+// }
+
 //
-// Removes a particle from a grid
+//  benchmarking program
 //
-bool grid_remove(grid_t & grid, particle_t * p, int gridCoord)
+//
+// adds a particle pointer to the grid
+//
+__device__ void grid_add_remove_temp_gpu(grid_t & grid, int g_sub_idx, int gridCoord, particle_t * p)
 {
-    if (gridCoord == -1)
-        gridCoord = grid_coord_flat(grid.size, p->x, p->y);
-
-    // No elements?
-    if (grid.grid[gridCoord] == 0)
-    {
-        return false;
-    }
-
-    // Beginning of critical section
-
-    linkedlist_t ** nodePointer = &(grid.grid[gridCoord]);
-    linkedlist_t * current = grid.grid[gridCoord];
+    // Remove
+    linkedlist_t ** nodePointer = &(grid.grid[4][gridCoord]);
+    linkedlist_t * current = grid.grid[4][gridCoord];
 
     while(current && (current->value != p))
     {
@@ -98,17 +124,14 @@ bool grid_remove(grid_t & grid, particle_t * p, int gridCoord)
     if (current)
     {
         *nodePointer = current->next;
-        free(current);
     }
 
-    // End of critical section
+    // Add current to temp bin
+    current->value = p;
+    newElement->next = grid.grid[g_sub_idx][gridCoord];
 
-    return !!current;
+    grid.grid[g_sub_idx][gridCoord] = current;
 }
-
-//
-//  benchmarking program
-//
 
 __device__ void apply_force_gpu(particle_t &particle, particle_t &neighbor)
 {
@@ -130,7 +153,7 @@ __device__ void apply_force_gpu(particle_t &particle, particle_t &neighbor)
 
 }
 
-__global__ void compute_forces_gpu(particle_t * particles, grid_t d_grid, int n)
+__global__ void compute_forces_gpu(grid_t d_grid, int n)
 {
   // Get thread (particle) ID
   int gx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -147,11 +170,11 @@ __global__ void compute_forces_gpu(particle_t * particles, grid_t d_grid, int n)
   // get x y coord of grid from tid.
   // then look at neighbour cells.
   // do apply force.
-  linkedlist_t * particle = d_grid.grid[gx*d_grid.size + gy];
+  linkedlist_t * particle = d_grid.grid[4][gx*d_grid.size + gy];
   while( particle ){
     for(int x = max(gx - 1, 0); x <= min(gx + 1, d_grid.size-1); x++){
       for(int y = max(gy - 1, 0); y <= min(gy + 1, d_grid.size-1); y++){
-        linkedlist_t * curr = d_grid.grid[x * d_grid.size + y];
+        linkedlist_t * curr = d_grid.grid[4][x * d_grid.size + y];
         while(curr)
           {
               apply_force_gpu(*(particle->value), *(curr->value));
@@ -163,39 +186,71 @@ __global__ void compute_forces_gpu(particle_t * particles, grid_t d_grid, int n)
   }
 }
 
-// __global__ void move_gpu (particle_t * particles, grid_t d_grid, int n, double size)
-// {
+__device__ double get_cutoff_gpu(){
+  // double cutoff = 0.01; //TODO maybe remove this.
+  return 0.01;
+}
 
-//   // Get thread (particle) ID
-//   int gx = threadIdx.x + blockIdx.x * blockDim.x;
-//   int gy = threadIdx.y + blockIdx.y * blockDim.y;
+__device__ int grid_coord_gpu(double c){
+  return (int)floor(c/get_cutoff_gpu());
+}
 
-//   if(gx >= d_grid.size || gy >= d_grid.size) return;
+__device__ int grid_coord_flat_gpu(int size, double x, double y){
+      return grid_coord_gpu(x) * size + grid_coord_gpu(y);
+}
 
-//   //
-//   //  slightly simplified Velocity Verlet integration
-//   //  conserves energy better than explicit Euler method
-//   //
-//   p->vx += p->ax * dt;
-//   p->vy += p->ay * dt;
-//   p->x  += p->vx * dt;
-//   p->y  += p->vy * dt;
+__global__ void move_gpu (grid_t d_grid, int n, double frame_size)
+{
+  int gx = threadIdx.x + blockIdx.x * blockDim.x;
+  int gy = threadIdx.y + blockIdx.y * blockDim.y;
+  int gc = gx*d_grid.size + gy;
+  if(gx >= d_grid.size || gy >= d_grid.size) return;
 
-//   //
-//   //  bounce from walls
-//   //
-//   while( p->x < 0 || p->x > size )
-//   {
-//       p->x  = p->x < 0 ? -(p->x) : 2*size-p->x;
-//       p->vx = -(p->vx);
-//   }
-//   while( p->y < 0 || p->y > size )
-//   {
-//       p->y  = p->y < 0 ? -(p->y) : 2*size-p->y;
-//       p->vy = -(p->vy);
-//   }
+  linkedlist_t* particle = d_grid.grid[4][gx*d_grid.size + gy];
+  while( particle){
 
-// }
+    particle_t * p = (particle->value);
+    //
+    //  slightly simplified Velocity Verlet integration
+    //  conserves energy better than explicit Euler method
+    //
+    p->vx += p->ax * dt;
+    p->vy += p->ay * dt;
+    p->x  += p->vx * dt;
+    p->y  += p->vy * dt;
+
+    //
+    //  bounce from walls
+    //
+    while( p->x < 0 || p->x > frame_size )
+    {
+        p->x  = p->x < 0 ? -(p->x) : 2*frame_size-p->x;
+        p->vx = -(p->vx);
+    }
+    while( p->y < 0 || p->y > frame_size )
+    {
+        p->y  = p->y < 0 ? -(p->y) : 2*frame_size-p->y;
+        p->vy = -(p->vy);
+    }
+
+    //
+    // Check if going outside the grid.
+    // Remove from current cell.
+    //
+    int gx_after = grid_coord_gpu(p->x);
+    int gy_after = grid_coord_gpu(p->y);
+    if (gx_after != gx || gy_after != gy){
+      grid_add_remove_temp_gpu(d_grid, (gx_after-gx+1)*3 + gy_after-gy+1, gc, p);
+    }
+
+    particle = particle -> next;
+  }
+
+}
+
+__global__ void add_to_grid_gpu(){
+
+}
 
 
 
@@ -267,12 +322,12 @@ int main( int argc, char **argv )
         dim3 dimBlock((gridSize+15)/16, (gridSize+15)/16, 1);
         dim3 dimThread(16, 16, 1);
         // printf("blk=%d, num_threads=%d\n", blks, NUM_THREADS);
-	      compute_forces_gpu <<< dimBlock, dimThread >>> (d_particles, d_grid, n);
+	      compute_forces_gpu <<< dimBlock, dimThread >>> (d_grid, n);
 
         //
         //  move particles
         //
-	      // move_gpu <<< dimBlock, dimThread >>> (d_particles, d_grid, n, size);
+	      move_gpu <<< dimBlock, dimThread >>> (d_grid, n, size);
         
         //
         //  save if necessary
