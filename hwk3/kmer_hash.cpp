@@ -18,10 +18,10 @@ int main(int argc, char **argv) {
 
   // TODO: remove this, when you start writing
   // parallel implementation.
-  if (upcxx::rank_n() > 1) {
-    throw std::runtime_error("Error: parallel implementation not started yet!"
-      " (remove this when you start working.)");
-  }
+  // if (upcxx::rank_n() > 1) {
+  //   throw std::runtime_error("Error: parallel implementation not started yet!"
+  //     " (remove this when you start working.)");
+  // }
 
   if (argc < 2) {
     BUtil::print("usage: srun -N nodes -n ranks ./kmer_hash kmer_file [verbose|test]\n");
@@ -61,6 +61,9 @@ int main(int argc, char **argv) {
     BUtil::print("Finished reading kmers.\n");
   }
 
+  //
+  // Building local hashmap and start nodes array.
+  //
   auto start = std::chrono::high_resolution_clock::now();
 
   std::vector <kmer_pair> start_nodes;
@@ -75,17 +78,31 @@ int main(int argc, char **argv) {
       start_nodes.push_back(kmer);
     }
   }
-  auto end_insert = std::chrono::high_resolution_clock::now();
-  upcxx::barrier();
+  // Build global pointer.
+  upcxx::global_ptr<HashMap> hashmap_ptr = nullptr;
+  if (upcxx::rank_me() == 0) {
+    hashmap_ptr = upcxx::new_array<HashMap>(upcxx::rank_n());
+  }
+  hashmap_ptr = upcxx::broadcast(hashmap_ptr, 0).wait();
 
+  my_hashmap_ptr = hashmap_ptr + upcxx::rank_me();
+
+  upcxx::rput(hashmap, my_hashmap_ptr)
+
+  auto end_insert = std::chrono::high_resolution_clock::now();
+  
+  // Measure time of buildinghash table.
+  upcxx::barrier();
   double insert_time = std::chrono::duration <double> (end_insert - start).count();
   if (run_type != "test") {
     BUtil::print("Finished inserting in %lf\n", insert_time);
   }
   upcxx::barrier();
 
+  //
+  // building contigs
+  //
   auto start_read = std::chrono::high_resolution_clock::now();
-
   std::list <std::list <kmer_pair>> contigs;
   for (const auto &start_kmer : start_nodes) {
     std::list <kmer_pair> contig;
