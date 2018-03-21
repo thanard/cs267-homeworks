@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
   }
   gdataptr = upcxx::broadcast(gdataptr, 0).wait();
 
-  upcxx::global_ptr<HashMap> my_gdataptr = gdataptr + upcxx::rank_me();
+  upcxx::global_ptr<std::vector <kmer_pair>> my_gdataptr = gdataptr + upcxx::rank_me();
 
   upcxx::rput(hashmap.data, my_gdataptr);
 
