@@ -79,15 +79,15 @@ int main(int argc, char **argv) {
     }
   }
   // Build global pointer.
-  upcxx::global_ptr<HashMap> hashmap_ptr = nullptr;
+  upcxx::global_ptr<std::vector <kmer_pair>> gdataptr = nullptr;
   if (upcxx::rank_me() == 0) {
-    hashmap_ptr = upcxx::new_array<HashMap>(upcxx::rank_n());
+    gdataptr = upcxx::new_array<std::vector <kmer_pair>>(upcxx::rank_n());
   }
-  hashmap_ptr = upcxx::broadcast(hashmap_ptr, 0).wait();
+  gdataptr = upcxx::broadcast(gdataptr, 0).wait();
 
-  my_hashmap_ptr = hashmap_ptr + upcxx::rank_me();
+  upcxx::global_ptr<HashMap> my_gdataptr = gdataptr + upcxx::rank_me();
 
-  upcxx::rput(hashmap, my_hashmap_ptr)
+  upcxx::rput(hashmap.data, my_gdataptr);
 
   auto end_insert = std::chrono::high_resolution_clock::now();
   
