@@ -91,9 +91,21 @@ int main(int argc, char **argv) {
     int count =0;
     for (int i=0;i<hashmap.my_size; i++){
       if(*(lp + i) != lp[i]) printf("errordsfadfasd\n");
-      count+= lp[i];
+      count+= lp[i]>0;
     }
+    kmer_pair * kp = hashmap.data[upcxx::rank_me()].local();
+    printf("my size: %d\n", hashmap.my_size);
+    upcxx::barrier();
     printf(" Wrote %d in rank %d\n", count, upcxx::rank_me());
+    upcxx::barrier();
+    printf("First 3 elements in rank %d: %s = %d, %s = %d, %s = %d\n", upcxx::rank_me(), kp[0].kmer_str().c_str(), lp[0], kp[1].kmer_str().c_str(), lp[1],  kp[2].kmer_str().c_str(), lp[2]);
+    
+    // Write to file
+    std::ofstream fout("verbose_" + std::to_string(upcxx::rank_me()) + ".dat");
+    for (int i=0; i<hashmap.my_size; i++) {
+      fout << kp[i].kmer_str().c_str() << ' ' << std::to_string(lp[i]) << std::endl;
+    }
+    fout.close();
   }
   auto end_insert = std::chrono::high_resolution_clock::now();
   
@@ -120,6 +132,7 @@ int main(int argc, char **argv) {
       kmer_pair kmer;
       bool success = hashmap.find(contig.back().next_kmer(), kmer);
       if (!success) {
+        printf("Doesn't find kmer str %s, end at kmer str %s \n", contig.back().next_kmer().get().c_str(), kmer.kmer_str().c_str());
         throw std::runtime_error("Error: k-mer not found in hashmap.");
       }
       contig.push_back(kmer);

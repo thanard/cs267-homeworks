@@ -97,12 +97,18 @@ bool HashMap::find(const pkmer_t &key_kmer, kmer_pair &val_kmer) {
   do {
     uint64_t slot = (hash + probe++) % global_size;
     if (slot_used(slot)) {
+    // if (true){
       val_kmer = read_slot(slot);
       if (val_kmer.kmer == key_kmer) {
         success = true;
       }
     }
   } while (!success && probe < global_size);
+  if (!success){
+    uint64_t slot = (hash + probe) % global_size;
+    printf("global_size: %d, probe: %d\n", global_size, probe);
+    printf("global slot: %d, slot rank: %d, local slot: %d\n", slot, which_rank(slot), slot % my_size);
+  }
   return success;
 }
 
@@ -126,14 +132,15 @@ kmer_pair HashMap::read_slot(uint64_t slot) {
 }
 
 bool HashMap::request_slot(uint64_t slot) {
-  upcxx::future<int> local_used = upcxx::atomic_get(used[which_rank(slot)] + slot % my_size, std::memory_order_relaxed);
+  // upcxx::future<int> local_used = upcxx::atomic_get(used[which_rank(slot)] + slot % my_size, std::memory_order_relaxed);
+  upcxx::future<int> local_used = upcxx::atomic_fetch_add(used[which_rank(slot)] + slot % my_size, 1, std::memory_order_relaxed);
   // if (used[slot] != 0) {
   local_used.wait();
   if (local_used.result() != 0){ 
     return false;
   } else {
 //    used[slot] = 1;
-    upcxx::atomic_fetch_add(used[which_rank(slot)] + slot % my_size, 1, std::memory_order_relaxed).wait();
+    // upcxx::atomic_put(used[which_rank(slot)] + slot % my_size, 1, std::memory_order_relaxed).wait();
     // upcxx::rput(1, used[which_rank(slot)] + slot % my_size);
     return true;
   }
