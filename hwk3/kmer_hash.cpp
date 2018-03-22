@@ -43,12 +43,30 @@ int main(int argc, char **argv) {
       std::to_string(ks) + "-mers, while this binary is compiled for " +
       std::to_string(KMER_LEN) + "-mers.  Modify packing.hpp and recompile.");
   }
-
+  // Total number of kmers from all ranks.
   size_t n_kmers = line_count(kmer_fname);
 
   // Load factor of 0.5
   size_t hash_table_size = n_kmers * (1.0 / 0.5);
+
+  size_t nprocs = upcxx::rank_n();
+  size_t my_rank = upcxx::rank_me();
+  // hash_table_size = (hash_table_size + nprocs - 1)/nprocs;
+
   HashMap hashmap(hash_table_size);
+
+  // Build global pointer for data and used.
+  vector<upcxx::global_ptr<kmer_pair>> data_ptr(nprocs);
+  vector<upcxx::global_ptr<int>> used_ptr(nprocs);
+  // upcxx::dist_object<HashMap> hashmap(hash_table_size);
+
+  data_ptr[my_rank] = //point to global data variable but local chunk
+  used_ptr[my_rank] = //point to global used
+
+  for (int i=0; i<nprocs; i++){
+    data_ptr[i] = upcxx::broadcast(data_ptr[i],i).wait();
+    used_ptr[i] = upcxx::broadcast(used_ptr[i],i).wait();
+  }
 
   if (run_type == "verbose") {
     BUtil::print("Initializing hash table of size %d for %d kmers.\n",
@@ -78,19 +96,24 @@ int main(int argc, char **argv) {
       start_nodes.push_back(kmer);
     }
   }
-  // Build global pointer.
-  upcxx::global_ptr<std::vector <kmer_pair>> gdataptr = nullptr;
-  if (upcxx::rank_me() == 0) {
-    gdataptr = upcxx::new_array<std::vector <kmer_pair>>(upcxx::rank_n());
-  }
-  gdataptr = upcxx::broadcast(gdataptr, 0).wait();
 
-  upcxx::global_ptr<std::vector <kmer_pair>> my_gdataptr = gdataptr + upcxx::rank_me();
 
-  upcxx::rput(hashmap.data, my_gdataptr);
+  // upcxx::global_ptr<std::vector <kmer_pair>> gdataptr = nullptr;
+  // if (upcxx::rank_me() == 0) {
+  //   gdataptr = upcxx::new_array<std::vector <kmer_pair>>(upcxx::rank_n());
+  // }
+  // gdataptr = upcxx::broadcast(gdataptr, 0).wait();
+
+  // upcxx::global_ptr<std::vector <kmer_pair>> my_gdataptr = gdataptr + upcxx::rank_me();
+
+  // upcxx::rput(hashmap.data, my_gdataptr);
+
 
   auto end_insert = std::chrono::high_resolution_clock::now();
   
+  // Build global pointer for used.
+
+
   // Measure time of buildinghash table.
   upcxx::barrier();
   double insert_time = std::chrono::duration <double> (end_insert - start).count();
