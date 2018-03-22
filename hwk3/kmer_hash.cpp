@@ -56,17 +56,6 @@ int main(int argc, char **argv) {
   HashMap hashmap(hash_table_size);
 
   // Build global pointer for data and used.
-  vector<upcxx::global_ptr<kmer_pair>> data_ptr(nprocs);
-  vector<upcxx::global_ptr<int>> used_ptr(nprocs);
-  // upcxx::dist_object<HashMap> hashmap(hash_table_size);
-
-  data_ptr[my_rank] = //point to global data variable but local chunk
-  used_ptr[my_rank] = //point to global used
-
-  for (int i=0; i<nprocs; i++){
-    data_ptr[i] = upcxx::broadcast(data_ptr[i],i).wait();
-    used_ptr[i] = upcxx::broadcast(used_ptr[i],i).wait();
-  }
 
   if (run_type == "verbose") {
     BUtil::print("Initializing hash table of size %d for %d kmers.\n",

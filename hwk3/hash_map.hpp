@@ -46,8 +46,10 @@ struct HashMap {
   bool request_slot(uint64_t slot);
   bool slot_used(uint64_t slot);
 
-  std::vector<upcxx::global_ptr<<kmer_pair>> data;
+  std::vector<upcxx::global_ptr<kmer_pair>> data;
   std::vector<upcxx::global_ptr<int>> used;
+
+  int which_rank(uint64_t slot);
 };
 
 HashMap::HashMap(size_t size) {
@@ -58,7 +60,7 @@ HashMap::HashMap(size_t size) {
 
   data.resize(nprocs);
   used.resize(nprocs);
-  data[upcxx::rank_me()] = upcxx::new_array<std::vector <kmer_pair>>(my_size);
+  data[upcxx::rank_me()] = upcxx::new_array<kmer_pair>(my_size);
   used[upcxx::rank_me()] = upcxx::new_array<int>(my_size);
   for (int i=0; i<nprocs; i++){
     data[i] = upcxx::broadcast(data[i],i).wait();
@@ -76,12 +78,12 @@ bool HashMap::insert(const kmer_pair &kmer) {
   bool success = false;
 
   do {
-    uint64_t slot = (hash + probe++) % global_size();
+    uint64_t slot = (hash + probe++) % global_size;
     success = request_slot(slot);
     if (success) {
       write_slot(slot, kmer);
     }
-  } while (!success && probe < global_size());
+  } while (!success && probe < my_size);
   return success;
 }
 
@@ -92,53 +94,53 @@ bool HashMap::find(const pkmer_t &key_kmer, kmer_pair &val_kmer) {
   uint64_t probe = 0;
   bool success = false;
   do {
-    uint64_t slot = (hash + probe++) % global_size();
+    uint64_t slot = (hash + probe++) % global_size;
     if (slot_used(slot)) {
       val_kmer = read_slot(slot);
       if (val_kmer.kmer == key_kmer) {
         success = true;
       }
     }
-  } while (!success && probe < global_size());
+  } while (!success && probe < my_size);
   return success;
 }
 
 bool HashMap::slot_used(uint64_t slot) {
   // return used[slot] != 0;
-  upcxx::future<int> local_used = upcxx::rget(used[which_rank][slot % my_size]);
-  wait(local_used);
-  return 0 == local_used.ready()
+  upcxx::future<int> local_used = upcxx::rget(used[which_rank(slot)] + slot % my_size);
+  local_used.wait();
+  return 0 != local_used.result();
 }
 
 void HashMap::write_slot(uint64_t slot, const kmer_pair &kmer) {
   // data[slot] = kmer;
-  upcxx::rput(kmer, data[which_rank(slot)][slot % my_size]).wait();
+  upcxx::rput(kmer, data[which_rank(slot)] + slot % my_size).wait();
 }
 
 kmer_pair HashMap::read_slot(uint64_t slot) {
   // return data[slot];
-  upcxx::future<kmer_pair> local_data = upcxx::rget(data[which_rank(slot)][slot % my_size]);
-  wait(local_data);
-  return local_data.ready();
+  upcxx::future<kmer_pair> local_data = upcxx::rget(data[which_rank(slot)] + slot % my_size);
+  local_data.wait();
+  return local_data.result();
 }
 
 bool HashMap::request_slot(uint64_t slot) {
-  upcxx::future<int> local_used = upcxx::rget(used[which_rank(slot)][slot % my_size])
+  upcxx::future<int> local_used = upcxx::rget(used[which_rank(slot)] + slot % my_size);
   // if (used[slot] != 0) {
-  wait(local_used);
+  local_used.wait();
   if (local_used.result() != 0){ 
     return false;
   } else {
 //    used[slot] = 1;
-    upcxx::rput(1, used[which_rank][slot % my_size]);
+    upcxx::rput(1, used[which_rank(slot)] + slot % my_size);
     return true;
   }
 }
 
-size_t HashMap::global_size() const noexcept {
-  return global_size;
-}
+// size_t HashMap::global_size() const noexcept {
+//   return global_size;
+// }
 
 int HashMap::which_rank(uint64_t slot) {
-  return int(slot / my_size)
+  return int(slot / my_size);
 }
