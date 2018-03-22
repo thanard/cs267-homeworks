@@ -2,6 +2,7 @@
 
 #include <upcxx/upcxx.hpp>
 #include "kmer_t.hpp"
+#include <atomic>
 
 struct HashMap {
   // std::vector <kmer_pair> data;
@@ -83,7 +84,7 @@ bool HashMap::insert(const kmer_pair &kmer) {
     if (success) {
       write_slot(slot, kmer);
     }
-  } while (!success && probe < my_size);
+  } while (!success && probe < global_size);
   return success;
 }
 
@@ -101,7 +102,7 @@ bool HashMap::find(const pkmer_t &key_kmer, kmer_pair &val_kmer) {
         success = true;
       }
     }
-  } while (!success && probe < my_size);
+  } while (!success && probe < global_size);
   return success;
 }
 
@@ -125,14 +126,15 @@ kmer_pair HashMap::read_slot(uint64_t slot) {
 }
 
 bool HashMap::request_slot(uint64_t slot) {
-  upcxx::future<int> local_used = upcxx::rget(used[which_rank(slot)] + slot % my_size);
+  upcxx::future<int> local_used = upcxx::atomic_get(used[which_rank(slot)] + slot % my_size, std::memory_order_relaxed);
   // if (used[slot] != 0) {
   local_used.wait();
   if (local_used.result() != 0){ 
     return false;
   } else {
 //    used[slot] = 1;
-    upcxx::rput(1, used[which_rank(slot)] + slot % my_size);
+    upcxx::atomic_fetch_add(used[which_rank(slot)] + slot % my_size, 1, std::memory_order_relaxed).wait();
+    // upcxx::rput(1, used[which_rank(slot)] + slot % my_size);
     return true;
   }
 }
@@ -142,5 +144,8 @@ bool HashMap::request_slot(uint64_t slot) {
 // }
 
 int HashMap::which_rank(uint64_t slot) {
+  if (slot >= global_size || slot <0){
+    throw std::runtime_error("Error: input has to be in [0, global_size-1]. ");
+  }
   return int(slot / my_size);
 }

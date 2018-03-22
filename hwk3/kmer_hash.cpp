@@ -85,19 +85,16 @@ int main(int argc, char **argv) {
       start_nodes.push_back(kmer);
     }
   }
-
-
-  // upcxx::global_ptr<std::vector <kmer_pair>> gdataptr = nullptr;
-  // if (upcxx::rank_me() == 0) {
-  //   gdataptr = upcxx::new_array<std::vector <kmer_pair>>(upcxx::rank_n());
-  // }
-  // gdataptr = upcxx::broadcast(gdataptr, 0).wait();
-
-  // upcxx::global_ptr<std::vector <kmer_pair>> my_gdataptr = gdataptr + upcxx::rank_me();
-
-  // upcxx::rput(hashmap.data, my_gdataptr);
-
-
+  if (run_type == "verbose"){
+    upcxx::barrier();
+    int *lp = hashmap.used[upcxx::rank_me()].local();
+    int count =0;
+    for (int i=0;i<hashmap.my_size; i++){
+      if(*(lp + i) != lp[i]) printf("errordsfadfasd\n");
+      count+= lp[i];
+    }
+    printf(" Wrote %d in rank %d\n", count, upcxx::rank_me());
+  }
   auto end_insert = std::chrono::high_resolution_clock::now();
   
   // Build global pointer for used.
